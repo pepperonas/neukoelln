@@ -137,8 +137,17 @@ export class Player extends Character {
 
         // Verstecke Spieler-Mesh, wenn im Fahrzeug
         if (this.mesh) {
+            // Wichtig: Setze das gesamte Mesh komplett unsichtbar
             this.mesh.visible = false;
-            if (this.debug) console.log("Spieler-Mesh versteckt");
+
+            // Zusätzlich alle Kinder im Mesh durchgehen und ebenfalls unsichtbar machen
+            if (this.mesh.children && this.mesh.children.length > 0) {
+                this.mesh.children.forEach(child => {
+                    child.visible = false;
+                });
+            }
+
+            if (this.debug) console.log("Spieler-Mesh wurde vollständig versteckt");
         }
     }
 
@@ -159,7 +168,7 @@ export class Player extends Character {
             // Übernimm Rotation des Fahrzeugs
             this.rotation = this.inVehicle.rotation;
 
-            // Referenz zum Fahrzeug zwischenspeichern, damit wir deren ejectDriver aufrufen können
+            // Referenz zum Fahrzeug zwischenspeichern
             const vehicle = this.inVehicle;
 
             // Referenz zum Fahrzeug löschen (wichtig: vor dem Aufruf von ejectDriver!)
@@ -169,16 +178,23 @@ export class Player extends Character {
             if (this.mesh) {
                 this.mesh.position.copy(this.position);
                 this.mesh.rotation.y = this.rotation;
+
+                // Mache Spieler-Mesh wieder sichtbar
                 this.mesh.visible = true;
 
-                if (this.debug) console.log("Spieler-Mesh sichtbar gemacht, Position:", this.position);
+                // Mache auch alle Kinder im Mesh wieder sichtbar
+                if (this.mesh.children && this.mesh.children.length > 0) {
+                    this.mesh.children.forEach(child => {
+                        child.visible = true;
+                    });
+                }
+
+                if (this.debug) console.log("Spieler-Mesh wurde vollständig sichtbar gemacht, Position:", this.position);
             }
 
             // Informiere das Fahrzeug, dass der Fahrer ausgestiegen ist
-            // Nur wenn nicht vom Fahrzeug selbst aufgerufen
             if (vehicle.driver === this) {
                 vehicle.ejectDriver();
-
                 if (this.debug) console.log("Fahrzeug informiert, dass Fahrer ausgestiegen ist");
             }
         }

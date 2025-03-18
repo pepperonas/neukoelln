@@ -1,10 +1,9 @@
 import * as THREE from 'three';
-import { InputManager } from '../core/input.js';
-import { EntityManager } from './entityManager.js';
-import { Car } from '../entities/vehicles/car.js';
-import { Building } from '../entities/environment/building.js';
-import { Player } from '../entities/characters/player.js';
-import { Projectile } from '../entities/weapons/projectile.js';
+import {InputManager} from '../core/input.js';
+import {EntityManager} from './entityManager.js';
+import {Car} from '../entities/vehicles/car.js';
+import {Building} from '../entities/environment/building.js';
+import {Player} from '../entities/characters/player.js';
 
 export class GameManager {
     constructor(engine) {
@@ -103,7 +102,7 @@ export class GameManager {
 
     createRoadMarkings() {
         const roadMarkingGeometry = new THREE.PlaneGeometry(0.2, 5);
-        const roadMarkingMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
+        const roadMarkingMaterial = new THREE.MeshStandardMaterial({color: 0xffffff});
 
         for (let i = -40; i <= 40; i += 10) {
             for (let j = -40; j <= 40; j += 10) {
@@ -184,11 +183,11 @@ export class GameManager {
         let playerOldPos = null;
         let carOldPos = null;
 
-        if (this.player) {
+        if (this.player && this.player.isActive) {
             playerOldPos = this.player.position.clone();
         }
 
-        if (this.playerCar) {
+        if (this.playerCar && this.playerCar.isActive) {
             carOldPos = this.playerCar.position.clone();
         }
 
@@ -208,7 +207,10 @@ export class GameManager {
         this.handlePlayerProjectiles();
 
         // NACH dem Aktualisieren der Entities: Jetzt Kollisionen prüfen und auflösen
-        this.handleCollisions(playerOldPos, carOldPos);
+        // Hier ist der entscheidende Teil für die Kollisionserkennung
+        if (playerOldPos || carOldPos) {
+            this.handleCollisions(playerOldPos, carOldPos);
+        }
 
         // Check boundaries
         this.checkBoundaries(trackEntity);
@@ -305,13 +307,23 @@ export class GameManager {
         this.handleProjectileCollisions();
 
         // Kollisionsbehandlung für Spieler zu Fuß
-        if (this.player && !this.player.inVehicle) {
-            this.handlePlayerCollisions(playerOldPos);
+        if (this.player && !this.player.inVehicle && playerOldPos) {
+            const collided = this.handlePlayerCollisions(playerOldPos);
+            if (collided) {
+                // Debug-Ausgabe für Kollision
+                console.log("Spieler kollidiert mit Gebäude - Position zurückgesetzt");
+                this.collisionDelay = 5;
+            }
         }
 
         // Kollisionsbehandlung für Auto
-        if (this.playerCar) {
-            this.handleCarCollisions(carOldPos);
+        if (this.playerCar && carOldPos) {
+            const collided = this.handleCarCollisions(carOldPos);
+            if (collided) {
+                // Debug-Ausgabe für Kollision
+                console.log("Auto kollidiert mit Gebäude - Position zurückgesetzt");
+                this.collisionDelay = 10;
+            }
         }
     }
 
@@ -351,8 +363,9 @@ export class GameManager {
     }
 
     handlePlayerCollisions(oldPos) {
-        if (!this.player || !this.player.mesh || !oldPos) return;
+        if (!this.player || !this.player.mesh || !oldPos) return false;
 
+        // Erstelle eine BoundingBox für den Spieler
         const playerBox = new THREE.Box3().setFromObject(this.player.mesh);
         let hasCollision = false;
 
@@ -364,7 +377,6 @@ export class GameManager {
 
             if (buildingBox.intersectsBox(playerBox)) {
                 hasCollision = true;
-                if (this.debug) console.log("Spieler kollidiert mit Gebäude");
                 break;
             }
         }
@@ -373,13 +385,16 @@ export class GameManager {
         if (hasCollision) {
             this.player.position.copy(oldPos);
             this.player.mesh.position.copy(oldPos);
-            this.collisionDelay = 5; // Kleiner Delay für bessere Steuerung
+            return true;
         }
+
+        return false;
     }
 
     handleCarCollisions(oldPos) {
-        if (!this.playerCar || !this.playerCar.mesh || !oldPos) return;
+        if (!this.playerCar || !this.playerCar.mesh || !oldPos) return false;
 
+        // Erstelle eine BoundingBox für das Auto
         const carBox = new THREE.Box3().setFromObject(this.playerCar.mesh);
         let hasCollision = false;
 
@@ -391,30 +406,30 @@ export class GameManager {
 
             if (buildingBox.intersectsBox(carBox)) {
                 hasCollision = true;
-                if (this.debug) console.log("Auto kollidiert mit Gebäude");
                 break;
             }
         }
 
-        // Wenn eine Kollision erkannt wurde, setze Position zurück
+        // Wenn eine Kollision erkannt wurde, setze Position zurück und "pralle ab"
         if (hasCollision) {
             this.playerCar.position.copy(oldPos);
             this.playerCar.mesh.position.copy(oldPos);
 
-            // Setze Geschwindigkeit zurück
-            this.playerCar.speed = -this.playerCar.speed * 0.3;
+            // Setze Geschwindigkeit zurück und füge ein deutliches "Abprallen" hinzu
+            this.playerCar.speed = -this.playerCar.speed * 0.75;
 
             // Wenn ein Fahrer im Auto ist, aktualisiere auch dessen Position
             if (this.playerCar.driver) {
                 this.playerCar.driver.position.copy(oldPos);
-
                 if (this.playerCar.driver.mesh) {
                     this.playerCar.driver.mesh.position.copy(oldPos);
                 }
             }
 
-            this.collisionDelay = 5; // Kleiner Delay für bessere Steuerung
+            return true;
         }
+
+        return false;
     }
 
     checkBoundaries(entity) {

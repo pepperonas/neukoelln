@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Entity } from '../entity.js';
+import {Entity} from '../entity.js';
 
 export class Character extends Entity {
     constructor(options = {}) {
@@ -21,12 +21,29 @@ export class Character extends Entity {
         // Basis-Update für alle Charaktere
         super.update(deltaTime);
 
-        // Wenn dieser Charakter in einem Fahrzeug ist, bewege Mesh zur Fahrzeugposition
-        if (this.inVehicle && this.mesh) {
+        // Wenn dieser Charakter in einem Fahrzeug ist
+        if (this.inVehicle) {
+            // Position und Rotation aktualisieren
             this.position.copy(this.inVehicle.position);
-            this.mesh.position.copy(this.position);
             this.rotation = this.inVehicle.rotation;
-            this.mesh.rotation.y = this.rotation;
+
+            // Mesh-Position und -Rotation aktualisieren, falls vorhanden
+            if (this.mesh) {
+                this.mesh.position.copy(this.position);
+                this.mesh.rotation.y = this.rotation;
+
+                // WICHTIG: Charakter im Fahrzeug immer unsichtbar halten
+                if (this.mesh.visible) {
+                    this.mesh.visible = false;
+
+                    // Alle Kinder ebenfalls unsichtbar machen
+                    if (this.mesh.children && this.mesh.children.length > 0) {
+                        this.mesh.children.forEach(child => {
+                            child.visible = false;
+                        });
+                    }
+                }
+            }
         }
     }
 

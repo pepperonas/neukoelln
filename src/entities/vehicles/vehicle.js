@@ -40,6 +40,19 @@ export class Vehicle extends Entity {
             const braking = inputManager.isPressed('Space');
             const reversing = inputManager.isPressed('ArrowDown') || inputManager.isPressed('KeyS');
 
+            // Falls ein Fahrer vorhanden ist, stelle sicher, dass er unsichtbar bleibt
+            if (this.driver && this.driver.mesh) {
+                // Fahrer immer unsichtbar machen, während er im Fahrzeug ist
+                this.driver.mesh.visible = false;
+
+                // Auch alle Kinder des Fahrer-Mesh unsichtbar machen
+                if (this.driver.mesh.children && this.driver.mesh.children.length > 0) {
+                    this.driver.mesh.children.forEach(child => {
+                        child.visible = false;
+                    });
+                }
+            }
+
             // Handle acceleration
             if (accelerating && !reversing) {
                 this.speed += this.acceleration;
