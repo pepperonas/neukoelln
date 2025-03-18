@@ -7,11 +7,11 @@ export class Vehicle extends Entity {
 
         // Vehicle properties
         this.speed = 0;
-        this.maxSpeed = options.maxSpeed || 0.1;        // Reduziert von 0.25 auf 0.1
-        this.acceleration = options.acceleration || 0.005; // Reduziert von 0.01 auf 0.005
-        this.deceleration = options.deceleration || 0.003; // Reduziert von 0.005 auf 0.003
-        this.braking = options.braking || 0.015;        // Reduziert von 0.03 auf 0.015
-        this.turnSpeed = options.turnSpeed || 0.03;     // Reduziert von 0.04 auf 0.03
+        this.maxSpeed = options.maxSpeed || 0.1;
+        this.acceleration = options.acceleration || 0.005;
+        this.deceleration = options.deceleration || 0.003;
+        this.braking = options.braking || 0.015;
+        this.turnSpeed = options.turnSpeed || 0.03;
         this.direction = new THREE.Vector3(0, 0, 1);
 
         // Create vehicle mesh group
@@ -19,63 +19,83 @@ export class Vehicle extends Entity {
 
         // Create wheels array
         this.wheels = [];
+
+        // Fahrzeug-spezifische Eigenschaften
+        this.driver = null; // Referenz zum Fahrer (Character-Objekt)
+        this.durability = options.durability || 100; // Gesundheit des Fahrzeugs
+        this.maxDurability = options.maxDurability || 100;
+        this.enterExitDistance = options.enterExitDistance || 2.5; // Wie weit kann der Spieler vom Fahrzeug entfernt sein, um einzusteigen
     }
 
     update(deltaTime, inputManager) {
-        const accelerating = inputManager.isPressed('ArrowUp') || inputManager.isPressed('KeyW');
-        const braking = inputManager.isPressed('Space');
-        const reversing = inputManager.isPressed('ArrowDown') || inputManager.isPressed('KeyS');
+        // Nur Steuerung erlauben, wenn ein Fahrer vorhanden ist
+        if (this.driver) {
+            const accelerating = inputManager.isPressed('ArrowUp') || inputManager.isPressed('KeyW');
+            const braking = inputManager.isPressed('Space');
+            const reversing = inputManager.isPressed('ArrowDown') || inputManager.isPressed('KeyS');
 
-        // Handle acceleration
-        if (accelerating && !reversing) {
-            this.speed += this.acceleration;
-            if (this.speed > this.maxSpeed) {
-                this.speed = this.maxSpeed;
-            }
-        } else if (reversing && !accelerating) {
-            this.speed -= this.acceleration;
-            if (this.speed < -this.maxSpeed / 2) {
-                this.speed = -this.maxSpeed / 2;
-            }
-        } else {
-            // Natural deceleration
-            if (this.speed > 0) {
-                this.speed -= this.deceleration;
-                if (this.speed < 0) this.speed = 0;
-            } else if (this.speed < 0) {
-                this.speed += this.deceleration;
-                if (this.speed > 0) this.speed = 0;
-            }
-        }
-
-        // Apply brakes
-        if (braking) {
-            if (this.speed > 0) {
-                this.speed -= this.braking;
-                if (this.speed < 0) this.speed = 0;
-            } else if (this.speed < 0) {
-                this.speed += this.braking;
-                if (this.speed > 0) this.speed = 0;
-            }
-        }
-
-        // Handle turning
-        const turningLeft = inputManager.isPressed('ArrowLeft') || inputManager.isPressed('KeyA');
-        const turningRight = inputManager.isPressed('ArrowRight') || inputManager.isPressed('KeyD');
-
-        if (this.speed !== 0) {
-            if (turningLeft && !turningRight) {
-                this.rotation += this.turnSpeed * Math.sign(this.speed);
-            } else if (turningRight && !turningLeft) {
-                this.rotation -= this.turnSpeed * Math.sign(this.speed);
+            // Handle acceleration
+            if (accelerating && !reversing) {
+                this.speed += this.acceleration;
+                if (this.speed > this.maxSpeed) {
+                    this.speed = this.maxSpeed;
+                }
+            } else if (reversing && !accelerating) {
+                this.speed -= this.acceleration;
+                if (this.speed < -this.maxSpeed / 2) {
+                    this.speed = -this.maxSpeed / 2;
+                }
+            } else {
+                // Natural deceleration
+                if (this.speed > 0) {
+                    this.speed -= this.deceleration;
+                    if (this.speed < 0) this.speed = 0;
+                } else if (this.speed < 0) {
+                    this.speed += this.deceleration;
+                    if (this.speed > 0) this.speed = 0;
+                }
             }
 
-            // Update direction vector
-            this.direction.set(
-                Math.sin(this.rotation),
-                0,
-                Math.cos(this.rotation)
-            );
+            // Apply brakes
+            if (braking) {
+                if (this.speed > 0) {
+                    this.speed -= this.braking;
+                    if (this.speed < 0) this.speed = 0;
+                } else if (this.speed < 0) {
+                    this.speed += this.braking;
+                    if (this.speed > 0) this.speed = 0;
+                }
+            }
+
+            // Handle turning
+            const turningLeft = inputManager.isPressed('ArrowLeft') || inputManager.isPressed('KeyA');
+            const turningRight = inputManager.isPressed('ArrowRight') || inputManager.isPressed('KeyD');
+
+            if (this.speed !== 0) {
+                if (turningLeft && !turningRight) {
+                    this.rotation += this.turnSpeed * Math.sign(this.speed);
+                } else if (turningRight && !turningLeft) {
+                    this.rotation -= this.turnSpeed * Math.sign(this.speed);
+                }
+
+                // Update direction vector
+                this.direction.set(
+                    Math.sin(this.rotation),
+                    0,
+                    Math.cos(this.rotation)
+                );
+            }
+
+            // Ein-/Aussteigen (Taste E)
+            if (inputManager.isPressed('KeyE')) {
+                // Einmaligen Tastendruck sicherstellen
+                if (!this.eKeyPressed) {
+                    this.eKeyPressed = true;
+                    this.handleExitVehicle();
+                }
+            } else {
+                this.eKeyPressed = false;
+            }
         }
 
         // Update position based on direction and speed
@@ -94,12 +114,58 @@ export class Vehicle extends Entity {
 
     damage(amount) {
         this.durability -= amount;
+
+        // Fahrzeug-Beschädigung hier implementieren (z.B. Rauch, Feuer, etc.)
         if (this.durability <= 0) {
+            this.durability = 0;
             this.destroy();
         }
     }
 
     destroy() {
+        // Wenn ein Fahrer im Fahrzeug ist, diesen aussteigen lassen
+        this.ejectDriver();
+
+        // Explosion oder sonstige Zerstörungseffekte hier
+        console.log("Fahrzeug zerstört!");
+
+        // Deaktiviere Fahrzeug
         this.isActive = false;
+    }
+
+    // Fahrer ins Fahrzeug setzen
+    setDriver(character) {
+        if (!this.driver) {
+            this.driver = character;
+            character.enterVehicle(this);
+            console.log("Fahrer eingestiegen");
+            return true;
+        }
+        return false;
+    }
+
+    // Fahrer aus dem Fahrzeug entfernen
+    ejectDriver() {
+        if (this.driver) {
+            const driver = this.driver;
+            this.driver = null;
+            driver.exitVehicle();
+            console.log("Fahrer ausgestiegen");
+            return true;
+        }
+        return false;
+    }
+
+    // E-Taste gedrückt: Aussteigen
+    handleExitVehicle() {
+        if (this.driver) {
+            this.ejectDriver();
+        }
+    }
+
+    // Prüfen, ob ein Charakter nahe genug ist, um einzusteigen
+    canEnter(character) {
+        const distance = this.position.distanceTo(character.position);
+        return distance <= this.enterExitDistance;
     }
 }

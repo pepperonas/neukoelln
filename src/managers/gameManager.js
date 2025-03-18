@@ -3,6 +3,7 @@ import {InputManager} from '../core/input.js';
 import {EntityManager} from './entityManager.js';
 import {Car} from '../entities/vehicles/car.js';
 import {Building} from '../entities/environment/building.js';
+import {Player} from '../entities/characters/player.js';
 
 export class GameManager {
     constructor(engine) {
@@ -10,8 +11,10 @@ export class GameManager {
         this.inputManager = new InputManager();
         this.entityManager = new EntityManager(engine.scene);
 
-        this.player = null;
+        this.player = null;     // Spieler-Charakter
+        this.playerCar = null;  // Auto des Spielers
         this.buildings = [];
+        this.projectiles = [];  // Liste der aktiven Projektile
         this.isRunning = false;
         this.hasCollided = false; // Flag um mehrfache Kollisionen zu verhindern
 
@@ -28,6 +31,9 @@ export class GameManager {
 
         // Create buildings
         this.createBuildings();
+
+        // Erstelle Spieler-Charakter
+        this.createPlayer();
 
         // Create player car
         this.createPlayerCar();
@@ -59,6 +65,8 @@ export class GameManager {
         this.entityManager.clear();
         this.buildings = [];
         this.player = null;
+        this.playerCar = null;
+        this.projectiles = [];
     }
 
     createGround() {
@@ -108,29 +116,38 @@ export class GameManager {
         }
     }
 
-    createPlayerCar() {
-        // Stelle sicher, dass nur ein Player-Auto existiert
-        if (this.player) {
-            this.entityManager.remove(this.player);
-        }
-
-        this.player = new Car();
+    createPlayer() {
+        // Erstelle einen neuen Spieler
+        this.player = new Player();
         this.entityManager.add(this.player);
 
+        // Setze die Position des Spielers
+        this.player.setPosition(0, 0, 0);
+    }
+
+    createPlayerCar() {
+        // Stelle sicher, dass nur ein Player-Auto existiert
+        if (this.playerCar) {
+            this.entityManager.remove(this.playerCar);
+        }
+
+        this.playerCar = new Car();
+        this.entityManager.add(this.playerCar);
+
         // Setze Position und Rotation zurück
-        this.player.position.set(0, 0, 0);
-        this.player.rotation = 0;
-        this.player.speed = 0;
+        this.playerCar.position.set(3, 0, 0);  // Auto neben Spieler platzieren
+        this.playerCar.rotation = 0;
+        this.playerCar.speed = 0;
 
         // Aktualisiere die Mesh-Position
-        if (this.player.mesh) {
-            this.player.mesh.position.copy(this.player.position);
-            this.player.mesh.rotation.y = this.player.rotation;
+        if (this.playerCar.mesh) {
+            this.playerCar.mesh.position.copy(this.playerCar.position);
+            this.playerCar.mesh.rotation.y = this.playerCar.rotation;
         }
     }
 
     setupCamera() {
-        // Position the camera based on the car
+        // Position the camera based on the player
         this.engine.camera.position.set(0, 15, 0);
         if (this.player) {
             this.engine.camera.lookAt(this.player.position);
@@ -138,19 +155,31 @@ export class GameManager {
     }
 
     update(deltaTime) {
-        if (!this.isRunning || !this.player) return;
+        if (!this.isRunning) return;
 
         // Update all entities
         this.entityManager.update(deltaTime, this.inputManager);
+
+        // Aktualisiere die zu verfolgende Entität für die Kamera
+        let trackEntity = this.player;
+        if (this.player && this.player.inVehicle) {
+            trackEntity = this.player.inVehicle;
+        }
+
+        // Prüfe, ob der Spieler mit der E-Taste in ein Fahrzeug einsteigen will
+        this.handleVehicleInteraction();
+
+        // Prüfe Projektile vom Spieler
+        this.handlePlayerProjectiles();
 
         // Check for collisions
         this.checkCollisions();
 
         // Check boundaries
-        this.checkBoundaries();
+        this.checkBoundaries(trackEntity);
 
-        // Update camera to follow player
-        this.updateCamera();
+        // Update camera to follow player or vehicle
+        this.updateCamera(trackEntity);
 
         // Reset collision flag after a delay
         if (this.hasCollided) {
@@ -158,76 +187,164 @@ export class GameManager {
                 this.hasCollided = false;
             }, 500); // 500ms Verzögerung zur Vermeidung von Mehrfachkollisionen
         }
+
+        // Projektile aktualisieren
+        this.updateProjectiles();
+    }
+
+    handleVehicleInteraction() {
+        // Prüfe, ob E-Taste gedrückt wurde
+        if (this.inputManager.isPressed('KeyE') && !this.eKeyPressed) {
+            this.eKeyPressed = true;
+
+            if (this.player.inVehicle) {
+                // Aussteigen
+                this.player.exitVehicle();
+            } else {
+                // Einsteigen, wenn ein Auto in der Nähe ist
+                if (this.playerCar && this.player.position.distanceTo(this.playerCar.position) < 3) {
+                    this.playerCar.setDriver(this.player);
+                }
+            }
+        } else if (!this.inputManager.isPressed('KeyE')) {
+            this.eKeyPressed = false;
+        }
+    }
+
+    handlePlayerProjectiles() {
+        // Wenn Spieler zu Fuß ist und schießt
+        if (this.player && !this.player.inVehicle && this.inputManager.isPressed('Space')) {
+            const projectile = this.player.shoot();
+
+            if (projectile) {
+                // Füge Projektil zum EntityManager hinzu
+                this.projectiles.push(this.entityManager.add(projectile));
+            }
+        }
+    }
+
+    updateProjectiles() {
+        // Entferne inaktive Projektile aus der Liste
+        this.projectiles = this.projectiles.filter(p => {
+            // Wenn das Projektil nicht mehr aktiv ist, entferne es aus der Liste
+            if (!p.isActive) {
+                this.entityManager.remove(p);
+                return false;
+            }
+            return true;
+        });
     }
 
     checkCollisions() {
-        if (!this.player || this.hasCollided) return;
+        if (this.hasCollided) return;
 
         let collisionDetected = false;
 
-        this.buildings.forEach(building => {
-            if (!building || !building.mesh || !this.player.mesh) return;
+        // Kollisionen zwischen Projektilen und Gebäuden/Fahrzeugen
+        this.projectiles.forEach(projectile => {
+            if (!projectile.isActive) return;
 
-            // Simple boundary box collision
-            const buildingBoundary = new THREE.Box3().setFromObject(building.mesh);
-            const carBoundary = new THREE.Box3().setFromObject(this.player.mesh);
+            // Prüfe Kollision mit Gebäuden
+            for (const building of this.buildings) {
+                if (!building || !building.mesh || !projectile.mesh) continue;
 
-            if (buildingBoundary.intersectsBox(carBoundary)) {
-                collisionDetected = true;
+                const buildingBoundary = new THREE.Box3().setFromObject(building.mesh);
+                const projectileBoundary = new THREE.Box3().setFromObject(projectile.mesh);
 
-                // Reverse the movement on collision
-                this.player.speed = -this.player.speed * 0.5;
+                if (buildingBoundary.intersectsBox(projectileBoundary)) {
+                    projectile.isActive = false;
+                    collisionDetected = true;
+                    break;
+                }
+            }
 
-                // Update position after reversing
-                this.player.position.x += this.player.direction.x * this.player.speed;
-                this.player.position.z += this.player.direction.z * this.player.speed;
+            // Prüfe Kollision mit Fahrzeug
+            if (projectile.isActive && this.playerCar && this.playerCar.mesh && projectile.owner !== this.playerCar) {
+                const carBoundary = new THREE.Box3().setFromObject(this.playerCar.mesh);
+                const projectileBoundary = new THREE.Box3().setFromObject(projectile.mesh);
 
-                // Aktualisiere direkt die Mesh-Position, ohne neues Auto zu erstellen
-                if (this.player.mesh) {
-                    this.player.mesh.position.copy(this.player.position);
+                if (carBoundary.intersectsBox(projectileBoundary)) {
+                    this.playerCar.damage(projectile.damage);
+                    projectile.isActive = false;
+                    collisionDetected = true;
                 }
             }
         });
 
+        // Fahrzeugkollisionen nur prüfen, wenn Spieler im Fahrzeug ist
+        if (this.player && this.player.inVehicle && this.playerCar) {
+            // Prüfe Kollision mit Gebäuden
+            this.buildings.forEach(building => {
+                if (!building || !building.mesh || !this.playerCar.mesh) return;
+
+                const buildingBoundary = new THREE.Box3().setFromObject(building.mesh);
+                const carBoundary = new THREE.Box3().setFromObject(this.playerCar.mesh);
+
+                if (buildingBoundary.intersectsBox(carBoundary)) {
+                    // Reverse the movement on collision
+                    this.playerCar.speed = -this.playerCar.speed * 0.5;
+
+                    // Update position after reversing
+                    this.playerCar.position.x += this.playerCar.direction.x * this.playerCar.speed;
+                    this.playerCar.position.z += this.playerCar.direction.z * this.playerCar.speed;
+
+                    // Aktualisiere direkt die Mesh-Position
+                    if (this.playerCar.mesh) {
+                        this.playerCar.mesh.position.copy(this.playerCar.position);
+                    }
+
+                    collisionDetected = true;
+                }
+            });
+        }
+
         // Setze das Kollisions-Flag wenn eine Kollision erkannt wurde
         if (collisionDetected) {
             this.hasCollided = true;
-            console.log("Kollision erkannt!");
         }
     }
 
-    checkBoundaries() {
-        if (!this.player || !this.player.mesh) return;
+    checkBoundaries(entity) {
+        if (!entity || !entity.mesh) return;
 
         const boundary = 45;
         let boundaryHit = false;
 
-        if (Math.abs(this.player.position.x) > boundary) {
-            this.player.position.x = Math.sign(this.player.position.x) * boundary;
-            this.player.speed *= -0.5;
+        if (Math.abs(entity.position.x) > boundary) {
+            entity.position.x = Math.sign(entity.position.x) * boundary;
+            if (entity === this.playerCar) {
+                entity.speed *= -0.5;
+            }
             boundaryHit = true;
         }
-        if (Math.abs(this.player.position.z) > boundary) {
-            this.player.position.z = Math.sign(this.player.position.z) * boundary;
-            this.player.speed *= -0.5;
+
+        if (Math.abs(entity.position.z) > boundary) {
+            entity.position.z = Math.sign(entity.position.z) * boundary;
+            if (entity === this.playerCar) {
+                entity.speed *= -0.5;
+            }
             boundaryHit = true;
         }
 
         // Aktualisiere die Mesh-Position nur, wenn nötig
-        if (boundaryHit && this.player.mesh) {
-            this.player.mesh.position.copy(this.player.position);
+        if (boundaryHit && entity.mesh) {
+            entity.mesh.position.copy(entity.position);
         }
     }
 
-    updateCamera() {
-        if (!this.player) return;
+    updateCamera(target) {
+        if (!target) return;
 
-        // GTA 2 style top-down view with slight angle
+        // GTA-Stil-Kamera: Folgt dem Spieler oder Fahrzeug
+        const isInVehicle = target === this.playerCar;
+        const height = isInVehicle ? 15 : 8; // Höhere Kamera für Fahrzeug, niedrigere für Spieler zu Fuß
+        const distance = isInVehicle ? 5 : 3; // Größerer Abstand für Fahrzeug
+
         this.engine.camera.position.set(
-            this.player.position.x,
-            15,
-            this.player.position.z + 5
+            target.position.x,
+            height,
+            target.position.z + distance
         );
-        this.engine.camera.lookAt(this.player.position);
+        this.engine.camera.lookAt(target.position);
     }
 }

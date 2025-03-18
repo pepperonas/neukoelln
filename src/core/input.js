@@ -9,6 +9,14 @@ export class InputManager {
             KeyA: false,
             KeyS: false,
             KeyD: false,
+            Space: false,
+            KeyE: false,  // Hinzugefügt für Ein-/Aussteigen
+            ShiftLeft: false  // Hinzugefügt für Sprinten
+        };
+
+        // Einmaltasten-Status, um wiederholtes Auslösen zu verhindern
+        this.oneTimeKeys = {
+            KeyE: false,
             Space: false
         };
 
@@ -30,11 +38,25 @@ export class InputManager {
     handleKeyUp(e) {
         if (this.keys.hasOwnProperty(e.code)) {
             this.keys[e.code] = false;
+
+            // Zurücksetzen der Einmaltasten
+            if (this.oneTimeKeys.hasOwnProperty(e.code)) {
+                this.oneTimeKeys[e.code] = false;
+            }
         }
     }
 
     isPressed(key) {
         return this.keys[key] === true;
+    }
+
+    // Für Tasten, die nur einmal pro Druck ausgelöst werden sollen
+    isPressedOnce(key) {
+        if (this.keys[key] && !this.oneTimeKeys[key]) {
+            this.oneTimeKeys[key] = true;
+            return true;
+        }
+        return false;
     }
 
     destroy() {
