@@ -13,7 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
     camera.position.set(0, 15, 5);
     camera.lookAt(0, 0, 0);
 
-    const renderer = new THREE.WebGLRenderer({antialias: true});
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
 
@@ -47,12 +47,67 @@ document.addEventListener('DOMContentLoaded', () => {
     ground.receiveShadow = true;
     scene.add(ground);
 
+    // Straßenmarkierungen hinzufügen
+    function createRoadMarkings() {
+        const roadMarkingGeometry = new THREE.PlaneGeometry(0.2, 5);
+        const roadMarkingMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
+
+        for (let i = -40; i <= 40; i += 10) {
+            for (let j = -40; j <= 40; j += 10) {
+                const roadMarking = new THREE.Mesh(roadMarkingGeometry, roadMarkingMaterial);
+                roadMarking.rotation.x = -Math.PI / 2;
+                roadMarking.position.set(i, -0.49, j);
+                roadMarking.receiveShadow = true;
+                scene.add(roadMarking);
+            }
+        }
+    }
+
+    createRoadMarkings();
+
+    // Gebäude erstellen
+    const buildings = [];
+
+    function createBuilding(x, z, width, depth, height) {
+        const geometry = new THREE.BoxGeometry(width, height, depth);
+        const material = new THREE.MeshStandardMaterial({
+            color: Math.random() * 0x808080 + 0x808080,
+            roughness: 0.7
+        });
+        const building = new THREE.Mesh(geometry, material);
+        building.position.set(x, height/2, z);
+        building.castShadow = true;
+        building.receiveShadow = true;
+        scene.add(building);
+        return building;
+    }
+
+    function createBuildings() {
+        const citySize = 40;
+        const buildingDensity = 15;
+
+        for (let i = 0; i < buildingDensity; i++) {
+            const width = Math.random() * 5 + 3;
+            const depth = Math.random() * 5 + 3;
+            const height = Math.random() * 10 + 5;
+            const x = Math.random() * citySize * 2 - citySize;
+            const z = Math.random() * citySize * 2 - citySize;
+
+            // Don't place buildings on the road
+            if (Math.abs(x) < 3 || Math.abs(z) < 3) continue;
+
+            buildings.push(createBuilding(x, z, width, depth, height));
+        }
+    }
+
+    createBuildings();
+
     // Auto erstellen
     const carGroup = new THREE.Group();
 
     // Auto-Körper
     const carBodyGeometry = new THREE.BoxGeometry(1.5, 0.5, 3);
-    const carBodyMaterial = new THREE.MeshStandardMaterial({color: 0xff0000, roughness: 0.5});
+    const carBodyMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.5 });
     const carBody = new THREE.Mesh(carBodyGeometry, carBodyMaterial);
     carBody.position.y = 0.5;
     carBody.castShadow = true;
@@ -60,7 +115,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Auto-Dach
     const carRoofGeometry = new THREE.BoxGeometry(1.3, 0.4, 1.5);
-    const carRoofMaterial = new THREE.MeshStandardMaterial({color: 0xdd0000, roughness: 0.5});
+    const carRoofMaterial = new THREE.MeshStandardMaterial({ color: 0xdd0000, roughness: 0.5 });
     const carRoof = new THREE.Mesh(carRoofGeometry, carRoofMaterial);
     carRoof.position.y = 0.95;
     carRoof.position.z = -0.2;
@@ -69,14 +124,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Räder
     const wheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.2, 16);
-    const wheelMaterial = new THREE.MeshStandardMaterial({color: 0x222222, roughness: 0.9});
+    const wheelMaterial = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.9 });
 
     const wheels = [];
     const wheelPositions = [
-        {x: -0.7, z: 1},
-        {x: 0.7, z: 1},
-        {x: -0.7, z: -1},
-        {x: 0.7, z: -1}
+        { x: -0.7, z: 1 },
+        { x: 0.7, z: 1 },
+        { x: -0.7, z: -1 },
+        { x: 0.7, z: -1 }
     ];
 
     wheelPositions.forEach(pos => {
@@ -86,6 +141,68 @@ document.addEventListener('DOMContentLoaded', () => {
         wheel.castShadow = true;
         carGroup.add(wheel);
         wheels.push(wheel);
+    });
+
+    // Scheinwerfer hinzufügen
+    const headlightGeometry = new THREE.SphereGeometry(0.1, 16, 16);
+    const headlightMaterial = new THREE.MeshStandardMaterial({
+        color: 0xffffcc,
+        emissive: 0xffffcc,
+        emissiveIntensity: 0.5
+    });
+
+    const headlightPositions = [
+        { x: -0.5, z: 1.5 },
+        { x: 0.5, z: 1.5 }
+    ];
+
+    // Speichere Scheinwerferlichter und -Ziele für spätere Aktualisierung
+    const headlights = [];
+    const headlightTargets = [];
+
+    headlightPositions.forEach(pos => {
+        const headlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
+        headlight.position.set(pos.x, 0.5, pos.z);
+        carGroup.add(headlight);
+
+        // Scheinwerferlicht hinzufügen
+        const headlightBeam = new THREE.SpotLight(0xffffcc, 0.8);
+        headlightBeam.position.set(pos.x, 0.5, pos.z);
+        headlightBeam.angle = Math.PI / 8;
+        headlightBeam.penumbra = 0.2;
+        headlightBeam.distance = 10;
+
+        // Ziel für den Lichtstrahl erstellen
+        const target = new THREE.Object3D();
+        target.position.set(pos.x, 0, pos.z + 5);
+        carGroup.add(target);
+        headlightBeam.target = target;
+
+        headlightBeam.castShadow = true;
+        carGroup.add(headlightBeam);
+
+        // Für spätere Aktualisierung speichern
+        headlights.push(headlightBeam);
+        headlightTargets.push(target);
+    });
+
+    // Rücklichter hinzufügen
+    const taillightGeometry = new THREE.SphereGeometry(0.1, 16, 16);
+    const taillightMaterial = new THREE.MeshStandardMaterial({
+        color: 0xff0000,
+        emissive: 0xff0000,
+        emissiveIntensity: 0.5
+    });
+
+    const taillightPositions = [
+        { x: -0.5, z: -1.5 },
+        { x: 0.5, z: -1.5 }
+    ];
+
+    taillightPositions.forEach(pos => {
+        const taillight = new THREE.Mesh(taillightGeometry, taillightMaterial);
+        taillight.position.set(pos.x, 0.5, pos.z);
+        carGroup.add(taillight);
     });
 
     scene.add(carGroup);
@@ -135,6 +252,22 @@ document.addEventListener('DOMContentLoaded', () => {
         renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
+    // Kollisionserkennung
+    function checkCollision() {
+        for (const building of buildings) {
+            // Simple boundary box collision
+            const buildingBoundary = new THREE.Box3().setFromObject(building);
+            const carBoundary = new THREE.Box3().setFromObject(carGroup);
+
+            if (buildingBoundary.intersectsBox(carBoundary)) {
+                // Reverse the movement on collision
+                car.speed = -car.speed * 0.5;
+                return true;
+            }
+        }
+        return false;
+    }
+
     // UI-Setup
     document.getElementById('loading-screen').classList.add('hidden');
     document.getElementById('menu').classList.remove('hidden');
@@ -170,6 +303,21 @@ document.addEventListener('DOMContentLoaded', () => {
         // Rotate wheels based on speed
         wheels.forEach(wheel => {
             wheel.rotation.x += car.speed * 0.5;
+        });
+
+        // Update headlight targets
+        headlightTargets.forEach((target, index) => {
+            const pos = headlightPositions[index];
+            // Berechne die Position relativ zur Autorotation
+            const targetX = pos.x * Math.cos(car.rotation) + pos.z * Math.sin(car.rotation);
+            const targetZ = -pos.x * Math.sin(car.rotation) + pos.z * Math.cos(car.rotation);
+
+            // Setze das Ziel voraus in Fahrtrichtung
+            target.position.set(
+                car.position.x + targetX + car.direction.x * 5,
+                0,
+                car.position.z + targetZ + car.direction.z * 5
+            );
         });
     }
 
@@ -234,6 +382,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Update car position
         updateCarPosition();
+
+        // Check for collisions
+        checkCollision();
 
         // Update camera to follow car
         camera.position.set(
