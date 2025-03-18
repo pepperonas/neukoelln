@@ -191,6 +191,8 @@ export class NetworkManager {
     }
 
     handleGameData(data) {
+        console.log("Game data empfangen:", data);
+
         if (this.onGameData) {
             this.onGameData({
                 senderId: data.senderId,
@@ -198,6 +200,7 @@ export class NetworkManager {
             });
         }
     }
+
 
     handleServerError(data) {
         console.error('Server-Fehler:', data.message);

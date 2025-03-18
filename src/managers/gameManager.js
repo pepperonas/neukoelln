@@ -538,22 +538,6 @@ export class GameManager {
         }
     }
 
-    startMultiplayerGame() {
-        this.isMultiplayer = true;
-
-        // Bereite Struktur für Remote-Spieler vor
-        this.remotePlayers = new Map();
-
-        // Starte das Spiel
-        this.startGame();
-
-        // Registriere Netzwerk-Event-Listener
-        this.setupMultiplayerEvents();
-
-        // Starte regelmäßige Positionsaktualisierungen
-        this.startNetworkUpdates();
-    }
-
     startNetworkUpdates() {
         if (!this.isMultiplayer) return;
 
@@ -563,12 +547,23 @@ export class GameManager {
         }, 100);
     }
 
-// Füge diese neue Methode zum GameManager hinzu
     setupMultiplayerEvents() {
-        // Hier würdest du Event-Listener für Netzwerkereignisse registrieren
+        // Generischer Handler für alle Spielerdaten
         this.networkManager.onGameData = (data) => {
-            // Aktualisiere Spielzustand basierend auf empfangenen Daten
-            this.handleMultiplayerData(data);
+            if (!data || !data.senderId) return;
+
+            const gameData = data.data;
+
+            // Je nach Datentyp verschiedene Handler aufrufen
+            if (gameData.type === 'world_data') {
+                console.log("Weltdaten empfangen:", gameData);
+                this.createWorldFromData(gameData);
+            } else if (gameData.type === 'player_update') {
+                // Ignoriere eigene Updates
+                if (data.senderId !== this.networkManager.playerName) {
+                    this.updateRemotePlayer(data.senderId, gameData);
+                }
+            }
         };
     }
 
@@ -651,5 +646,125 @@ export class GameManager {
         };
 
         this.networkManager.sendGameData(playerData);
+    }
+
+    startMultiplayerGame() {
+        this.isMultiplayer = true;
+
+        // Bereite Struktur für Remote-Spieler vor
+        this.remotePlayers = new Map();
+
+        // Registriere Netzwerk-Event-Listener ZUERST, damit wir Weltdaten empfangen können
+        this.setupMultiplayerEvents();
+
+        // Host generiert die Welt und sendet die Daten
+        if (this.networkManager.isHost) {
+            // Starte das Spiel und generiere die Welt
+            this.startGame();
+
+            // Sende Gebäudedaten an alle Clients
+            setTimeout(() => {
+                this.sendWorldData();
+            }, 1000); // Kurze Verzögerung, um sicherzustellen, dass die Welt vollständig generiert ist
+        } else {
+            // Clients warten auf Weltdaten vom Host
+            this.showLoadingMessage("Warte auf Weltdaten vom Host...");
+            // Hier nicht startGame() aufrufen - das wird in createWorldFromData gemacht
+        }
+
+        // Starte regelmäßige Positionsaktualisierungen
+        this.startNetworkUpdates();
+    }
+
+// Neue Methode: Weltdaten senden (nur Host)
+    sendWorldData() {
+        if (!this.isMultiplayer || !this.networkManager.isHost) return;
+
+        // Sammle Daten über alle Gebäude
+        const buildingData = this.buildings.map(building => ({
+            position: {
+                x: building.position.x,
+                y: building.position.y,
+                z: building.position.z
+            },
+            dimensions: {
+                width: building.width,
+                height: building.height,
+                depth: building.depth
+            }
+        }));
+
+        // Sende Weltdaten an alle Clients
+        const worldData = {
+            type: 'world_data',
+            buildings: buildingData
+        };
+
+        console.log("Sende Weltdaten:", worldData);
+        this.networkManager.sendGameData(worldData);
+    }
+
+// Neue Methode: Welt aus empfangenen Daten erstellen (nur Clients)
+    createWorldFromData(worldData) {
+        // Boden und Straßenmarkierungen erstellen
+        this.createGround();
+        this.createRoadMarkings();
+
+        // Gebäude aus den empfangenen Daten erstellen
+        if (worldData.buildings && worldData.buildings.length > 0) {
+            worldData.buildings.forEach(buildingData => {
+                const building = new Building(
+                    buildingData.position.x,
+                    buildingData.position.z,
+                    buildingData.dimensions.width,
+                    buildingData.dimensions.depth,
+                    buildingData.dimensions.height
+                );
+                this.buildings.push(this.entityManager.add(building));
+            });
+
+            console.log(`${this.buildings.length} Gebäude aus Weltdaten erstellt`);
+        }
+
+        // Spieler und Auto erstellen
+        this.createPlayer();
+        this.createPlayerCar();
+
+        // Kamera einrichten
+        this.setupCamera();
+
+        // Spiel starten
+        this.isRunning = true;
+        this.engine.start();
+
+        // Loading-Message entfernen
+        this.hideLoadingMessage();
+    }
+
+// Hilfsmethoden für Loading-Message
+    showLoadingMessage(message) {
+        // Erstelle oder aktualisiere eine Loading-Message im UI
+        if (!this.loadingMessage) {
+            this.loadingMessage = document.createElement('div');
+            this.loadingMessage.style.position = 'fixed';
+            this.loadingMessage.style.top = '50%';
+            this.loadingMessage.style.left = '50%';
+            this.loadingMessage.style.transform = 'translate(-50%, -50%)';
+            this.loadingMessage.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+            this.loadingMessage.style.color = 'white';
+            this.loadingMessage.style.padding = '20px';
+            this.loadingMessage.style.borderRadius = '10px';
+            this.loadingMessage.style.zIndex = '1000';
+            document.body.appendChild(this.loadingMessage);
+        }
+
+        this.loadingMessage.textContent = message;
+    }
+
+    hideLoadingMessage() {
+        if (this.loadingMessage && this.loadingMessage.parentNode) {
+            this.loadingMessage.parentNode.removeChild(this.loadingMessage);
+            this.loadingMessage = null;
+        }
     }
 }

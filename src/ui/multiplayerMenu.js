@@ -296,18 +296,71 @@ export class MultiplayerMenu {
     }
 
     copyRoomCode() {
-        if (this.roomCode) {
-            navigator.clipboard.writeText(this.roomCode)
-                .then(() => {
-                    this.copyButton.textContent = 'Kopiert!';
-                    setTimeout(() => {
-                        this.copyButton.textContent = 'Kopieren';
-                    }, 2000);
-                })
-                .catch(err => {
-                    console.error('Fehler beim Kopieren:', err);
-                });
+        if (!this.roomCode) return;
+
+        try {
+            // Versuch 1: Clipboard API (modern)
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(this.roomCode)
+                    .then(() => {
+                        this.copyButton.textContent = 'Kopiert!';
+                        setTimeout(() => {
+                            this.copyButton.textContent = 'Kopieren';
+                        }, 2000);
+                    })
+                    .catch(err => {
+                        console.error('Fehler beim Kopieren mit Clipboard API:', err);
+                        this.fallbackCopy();
+                    });
+            } else {
+                // Fallback-Methoden, wenn Clipboard API nicht verfügbar ist
+                this.fallbackCopy();
+            }
+        } catch (err) {
+            console.error('Fehler beim Kopieren:', err);
+            this.fallbackCopy();
         }
+    }
+
+    fallbackCopy() {
+        // Fallback 1: document.execCommand (ältere Browser)
+        try {
+            // Temporäres textarea-Element erstellen
+            const textArea = document.createElement('textarea');
+            textArea.value = this.roomCode;
+
+            // Element außerhalb des sichtbaren Bereichs platzieren
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            textArea.style.top = '-999999px';
+            document.body.appendChild(textArea);
+
+            // Text auswählen und kopieren
+            textArea.focus();
+            textArea.select();
+            const success = document.execCommand('copy');
+
+            // Aufräumen
+            document.body.removeChild(textArea);
+
+            if (success) {
+                this.copyButton.textContent = 'Kopiert!';
+                setTimeout(() => {
+                    this.copyButton.textContent = 'Kopieren';
+                }, 2000);
+            } else {
+                // Fallback 2: Benutzer auffordern, manuell zu kopieren
+                this.showManualCopyPrompt();
+            }
+        } catch (err) {
+            console.error('Fehler beim Fallback-Kopieren:', err);
+            this.showManualCopyPrompt();
+        }
+    }
+
+    showManualCopyPrompt() {
+        // Zeige eine Nachricht an, die den Benutzer auffordert, manuell zu kopieren
+        alert(`Bitte kopiere den Code manuell: ${this.roomCode}`);
     }
 
     updatePlayerList(players) {

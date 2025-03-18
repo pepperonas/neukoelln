@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { Character } from './character.js';
-import { Weapon } from '../weapons/weapon.js';
-import { Projectile } from '../weapons/projectile.js';
+import {Character} from './character.js';
+import {Weapon} from '../weapons/weapon.js';
+import {Projectile} from '../weapons/projectile.js';
 
 export class Player extends Character {
     constructor(options = {}) {
@@ -35,7 +35,7 @@ export class Player extends Character {
 
         // Körper (Zylinder)
         const bodyGeometry = new THREE.CylinderGeometry(0.3, 0.3, 1.2, 16);
-        const bodyMaterial = new THREE.MeshStandardMaterial({ color: color });
+        const bodyMaterial = new THREE.MeshStandardMaterial({color: color});
         const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
         body.position.y = 0.6;
         body.castShadow = true;
@@ -43,7 +43,7 @@ export class Player extends Character {
 
         // Kopf (Kugel)
         const headGeometry = new THREE.SphereGeometry(0.25, 16, 16);
-        const headMaterial = new THREE.MeshStandardMaterial({ color: 0xffcc99 });
+        const headMaterial = new THREE.MeshStandardMaterial({color: 0xffcc99});
         const head = new THREE.Mesh(headGeometry, headMaterial);
         head.position.y = 1.35;
         head.castShadow = true;
@@ -51,7 +51,7 @@ export class Player extends Character {
 
         // Waffe (einfacher Quader)
         const weaponGeometry = new THREE.BoxGeometry(0.1, 0.1, 0.4);
-        const weaponMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+        const weaponMaterial = new THREE.MeshStandardMaterial({color: 0x333333});
         this.weaponMesh = new THREE.Mesh(weaponGeometry, weaponMaterial);
         this.weaponMesh.position.set(0.3, 0.9, 0.3);
         this.mesh.add(this.weaponMesh);
@@ -87,6 +87,17 @@ export class Player extends Character {
         // Aktualisiere Position und Rotation des Mesh
         this.mesh.position.copy(this.position);
         this.mesh.rotation.y = this.rotation;
+    }
+
+    updateWithoutInput(deltaTime) {
+        // Basis-Update ohne Bewegungslogik
+        super.update(deltaTime);
+
+        // Aktualisiere Position und Rotation des Mesh
+        if (this.mesh) {
+            this.mesh.position.copy(this.position);
+            this.mesh.rotation.y = this.rotation;
+        }
     }
 
     shoot() {
@@ -157,9 +168,9 @@ export class Player extends Character {
         if (this.inVehicle) {
             // Setze Spieler-Position auf Position neben dem Fahrzeug
             const offset = new THREE.Vector3(
-                Math.sin(this.inVehicle.rotation + Math.PI/2) * 2,
+                Math.sin(this.inVehicle.rotation + Math.PI / 2) * 2,
                 0,
-                Math.cos(this.inVehicle.rotation + Math.PI/2) * 2
+                Math.cos(this.inVehicle.rotation + Math.PI / 2) * 2
             );
 
             // Kopiere Position des Fahrzeugs und addiere Offset

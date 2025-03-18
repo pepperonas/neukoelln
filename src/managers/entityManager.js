@@ -51,21 +51,19 @@ export class EntityManager {
     }
 
     update(deltaTime, inputManager) {
-        // Stelle sicher, dass kein doppelter Player aktualisiert wird
-        let playerUpdated = false;
-
         this.entities.forEach(entity => {
             if (entity && entity.isActive) {
-                // Spezielle Behandlung für Player-Objekte
-                if (entity instanceof Player) {
-                    if (playerUpdated) {
-                        console.warn("Mehrere Player-Instanzen gefunden!");
-                        return; // Aktualisiere nur den ersten Player
-                    }
-                    playerUpdated = true;
-                }
+                // Prüfe, ob es sich um einen Remote-Spieler handelt
+                const isRemotePlayer = entity instanceof Player && entity.id.startsWith('remote_');
 
-                entity.update(deltaTime, inputManager);
+                // Remote-Spieler nicht mit lokalen Eingaben aktualisieren
+                if (isRemotePlayer) {
+                    // Nur Basis-Update ohne InputManager
+                    entity.updateWithoutInput(deltaTime);
+                } else {
+                    // Normales Update für lokale Entitäten
+                    entity.update(deltaTime, inputManager);
+                }
             }
         });
     }
