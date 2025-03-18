@@ -1,3 +1,5 @@
+import {MultiplayerMenu} from './multiplayerMenu.js';
+
 export class MenuManager {
     constructor(gameManager) {
         this.gameManager = gameManager;
@@ -17,6 +19,7 @@ export class MenuManager {
     setupEventListeners() {
         // Hauptmenü-Buttons
         document.getElementById('start-game').addEventListener('click', () => this.startGame());
+        document.getElementById('multiplayer').addEventListener('click', () => this.showMultiplayerMenu());
         document.getElementById('options').addEventListener('click', () => this.showOptionsMenu());
         document.getElementById('credits').addEventListener('click', () => this.showCredits());
 
@@ -35,6 +38,19 @@ export class MenuManager {
 
     hideMainMenu() {
         this.menuElement.classList.add('hidden');
+    }
+
+    showMultiplayerMenu() {
+        // Verstecke das Hauptmenü
+        this.hideMainMenu();
+
+        // Zeige das Multiplayer-Menü
+        if (!this.multiplayerMenu) {
+            // Erstelle das Multiplayer-Menü, falls es noch nicht existiert
+            this.multiplayerMenu = new MultiplayerMenu(this.gameManager);
+        }
+
+        this.multiplayerMenu.show();
     }
 
     showLoadingScreen(progress = 0) {

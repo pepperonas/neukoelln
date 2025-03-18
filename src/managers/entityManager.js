@@ -17,11 +17,19 @@ export class EntityManager {
 
         // Spezielle Prüfung für Player-Objekte
         if (entity instanceof Player) {
-            // Überprüfe, ob bereits ein Player in der Liste existiert
-            const existingPlayers = this.entities.filter(e => e instanceof Player);
-            if (existingPlayers.length > 0) {
-                console.warn("Versuch, einen zweiten Player hinzuzufügen! Dies ist nicht erlaubt.");
-                return existingPlayers[0]; // Gib den existierenden Player zurück
+            // Prüfe, ob es sich um einen Remote-Spieler handelt
+            const isRemote = entity.id.startsWith('remote_');
+
+            if (!isRemote) {
+                // Nur für lokale Spieler: Überprüfe, ob bereits ein lokaler Spieler existiert
+                const existingLocalPlayers = this.entities.filter(e =>
+                    e instanceof Player && !e.id.startsWith('remote_')
+                );
+
+                if (existingLocalPlayers.length > 0) {
+                    console.warn("Versuch, einen zweiten lokalen Player hinzuzufügen! Dies ist nicht erlaubt.");
+                    return existingLocalPlayers[0]; // Gib den existierenden Player zurück
+                }
             }
         }
 

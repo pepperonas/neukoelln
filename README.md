@@ -48,5 +48,6 @@ sudo systemctl restart nginx
 ```
 
 ```sh
-/var/www/html# npm start -- --host 0.0.0.0 --port 8080
+cd /var/www/html/
+npm start -- --host 0.0.0.0 --port 8080
 ```

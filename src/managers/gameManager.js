@@ -4,18 +4,22 @@ import {EntityManager} from './entityManager.js';
 import {Car} from '../entities/vehicles/car.js';
 import {Building} from '../entities/environment/building.js';
 import {Player} from '../entities/characters/player.js';
+import {NetworkManager} from '../network/networkManager.js';
 
 export class GameManager {
     constructor(engine) {
         this.engine = engine;
         this.inputManager = new InputManager();
         this.entityManager = new EntityManager(engine.scene);
+        this.networkManager = new NetworkManager(this); // Neue Zeile hinzufügen
 
         this.player = null;     // Spieler-Charakter
         this.playerCar = null;  // Auto des Spielers
         this.buildings = [];
         this.projectiles = [];  // Liste der aktiven Projektile
         this.isRunning = false;
+        this.isMultiplayer = false; // Neue Zeile hinzufügen
+        this.remotePlayers = []; // Neue Zeile hinzufügen
 
         // Tasten-Status-Tracking
         this.keyStatus = {
@@ -78,6 +82,20 @@ export class GameManager {
     stopGame() {
         this.isRunning = false;
         this.engine.stop();
+
+        // Netzwerk-Updates stoppen
+        if (this.networkUpdateInterval) {
+            clearInterval(this.networkUpdateInterval);
+            this.networkUpdateInterval = null;
+        }
+
+        // Remote-Spieler entfernen
+        if (this.remotePlayers) {
+            this.remotePlayers.forEach(player => {
+                this.entityManager.remove(player);
+            });
+            this.remotePlayers.clear();
+        }
 
         // Cleanup
         this.entityManager.clear();
@@ -244,6 +262,11 @@ export class GameManager {
         // Reduziere Kollisions-Delay
         if (this.collisionDelay > 0) {
             this.collisionDelay--;
+        }
+
+        if (this.isMultiplayer) {
+            // Sende regelmäßige Aktualisierungen an andere Spieler
+            this.sendPlayerUpdate();
         }
     }
 
@@ -513,5 +536,120 @@ export class GameManager {
         if (window.gameDebug && typeof window.gameDebug.updateDebugInfo === 'function') {
             window.gameDebug.updateDebugInfo(this.player, this.playerCar);
         }
+    }
+
+    startMultiplayerGame() {
+        this.isMultiplayer = true;
+
+        // Bereite Struktur für Remote-Spieler vor
+        this.remotePlayers = new Map();
+
+        // Starte das Spiel
+        this.startGame();
+
+        // Registriere Netzwerk-Event-Listener
+        this.setupMultiplayerEvents();
+
+        // Starte regelmäßige Positionsaktualisierungen
+        this.startNetworkUpdates();
+    }
+
+    startNetworkUpdates() {
+        if (!this.isMultiplayer) return;
+
+        // Alle 100ms Position und Zustand senden
+        this.networkUpdateInterval = setInterval(() => {
+            this.sendPlayerUpdate();
+        }, 100);
+    }
+
+// Füge diese neue Methode zum GameManager hinzu
+    setupMultiplayerEvents() {
+        // Hier würdest du Event-Listener für Netzwerkereignisse registrieren
+        this.networkManager.onGameData = (data) => {
+            // Aktualisiere Spielzustand basierend auf empfangenen Daten
+            this.handleMultiplayerData(data);
+        };
+    }
+
+    handleMultiplayerData(data) {
+        if (!data || !data.senderId || data.senderId === this.networkManager.playerName) return;
+
+        const gameData = data.data;
+
+        if (gameData.type === 'player_update') {
+            this.updateRemotePlayer(data.senderId, gameData);
+        }
+    }
+
+    updateRemotePlayer(playerId, playerData) {
+        // Erstelle oder aktualisiere Remote-Spieler
+        if (!this.remotePlayers.has(playerId)) {
+            // Erstelle neuen Remote-Spieler
+            const remotePlayer = new Player({
+                color: 0x00ff00  // Andere Farbe für Remote-Spieler
+            });
+
+            // Setze eindeutige ID
+            remotePlayer.id = `remote_${playerId}`;
+
+            // Füge zum EntityManager hinzu
+            this.entityManager.add(remotePlayer);
+
+            // Speichere Referenz
+            this.remotePlayers.set(playerId, remotePlayer);
+
+            console.log(`Neuer Remote-Spieler erstellt: ${playerId}`);
+        }
+
+        // Spieler-Referenz abrufen
+        const remotePlayer = this.remotePlayers.get(playerId);
+
+        // Position und Rotation aktualisieren
+        if (playerData.position) {
+            remotePlayer.setPosition(
+                playerData.position.x,
+                playerData.position.y,
+                playerData.position.z
+            );
+        }
+
+        if (playerData.rotation !== undefined) {
+            remotePlayer.setRotation(playerData.rotation);
+        }
+
+        // Auto-Zustand aktualisieren
+        if (playerData.inVehicle) {
+            // Wenn der Remote-Spieler in einem Fahrzeug ist, machen wir ihn unsichtbar
+            // (später könnte man hier das entsprechende Fahrzeug aktualisieren)
+            if (remotePlayer.mesh) {
+                remotePlayer.mesh.visible = false;
+            }
+        } else {
+            // Spieler sichtbar machen, wenn er nicht in einem Fahrzeug ist
+            if (remotePlayer.mesh) {
+                remotePlayer.mesh.visible = true;
+            }
+        }
+    }
+
+    sendPlayerUpdate() {
+        if (!this.isMultiplayer || !this.player) return;
+
+        // Sende Spieleraktualisierung an andere Spieler
+        const playerData = {
+            type: 'player_update',
+            position: {
+                x: this.player.position.x,
+                y: this.player.position.y,
+                z: this.player.position.z
+            },
+            rotation: this.player.rotation,
+            inVehicle: this.player.inVehicle ? true : false,
+            vehicleId: this.player.inVehicle ? this.player.inVehicle.id : null,
+            health: this.player.health
+        };
+
+        this.networkManager.sendGameData(playerData);
     }
 }
