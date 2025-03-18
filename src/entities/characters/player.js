@@ -22,6 +22,9 @@ export class Player extends Character {
         this.health = 100;
         this.maxHealth = 100;
 
+        // Debug-Flag
+        this.debug = true;
+
         // Erstelle Spieler-Modell
         this.createPlayerModel(options.color || 0x3366ff);
     }
@@ -79,11 +82,6 @@ export class Player extends Character {
 
             // Aktualisiere die Richtungsvektoren basierend auf der aktuellen Rotation
             this.direction.set(Math.sin(this.rotation), 0, Math.cos(this.rotation));
-
-            // Schießen
-            if (inputManager.isPressed('Space')) {
-                this.shoot();
-            }
         }
 
         // Aktualisiere Position und Rotation des Mesh
@@ -92,28 +90,33 @@ export class Player extends Character {
     }
 
     shoot() {
+        if (this.debug) console.log("Schussfunktion aufgerufen");
+
         const now = performance.now();
         // Prüfe, ob seit dem letzten Schuss genug Zeit vergangen ist (Feuerrate)
-        if (now - this.lastShot < 1000 / this.weapon.fireRate) return;
+        if (now - this.lastShot < 1000 / this.weapon.fireRate) {
+            if (this.debug) console.log("Feuerrate-Verzögerung, noch nicht bereit zum Schießen");
+            return null;
+        }
 
         // Prüfe, ob noch Munition vorhanden ist
         if (this.weapon.ammo <= 0) {
-            console.log("Keine Munition!");
-            return;
+            if (this.debug) console.log("Keine Munition mehr!");
+            return null;
         }
 
         this.weapon.ammo--;
         this.lastShot = now;
 
-        console.log("Schuss abgefeuert! Verbleibende Munition:", this.weapon.ammo);
+        if (this.debug) console.log("Schuss abgefeuert! Verbleibende Munition:", this.weapon.ammo);
 
         // Erstelle Projektil an der Position der Waffe
         const projectilePosition = new THREE.Vector3();
         this.weaponMesh.getWorldPosition(projectilePosition);
 
-        // Erstelle ein neues Projektil (wird später an EntityManager übergeben)
+        // Erstelle ein neues Projektil
         const projectile = new Projectile({
-            position: projectilePosition,
+            position: projectilePosition.clone(),
             direction: this.direction.clone(),
             speed: 0.5,
             damage: this.weapon.damage,
@@ -121,17 +124,27 @@ export class Player extends Character {
             owner: this
         });
 
-        // Gibt das Projektil zurück, damit der GameManager es zum EntityManager hinzufügen kann
+        if (this.debug) console.log("Projektil erstellt:", projectile);
+
+        // Gib das Projektil zurück, damit der GameManager es zum EntityManager hinzufügen kann
         return projectile;
     }
 
     enterVehicle(vehicle) {
+        if (this.debug) console.log("Player.enterVehicle aufgerufen, Fahrzeug:", vehicle);
+
         this.inVehicle = vehicle;
+
         // Verstecke Spieler-Mesh, wenn im Fahrzeug
-        this.mesh.visible = false;
+        if (this.mesh) {
+            this.mesh.visible = false;
+            if (this.debug) console.log("Spieler-Mesh versteckt");
+        }
     }
 
     exitVehicle() {
+        if (this.debug) console.log("Player.exitVehicle aufgerufen, aktuelles Fahrzeug:", this.inVehicle);
+
         if (this.inVehicle) {
             // Setze Spieler-Position auf Position neben dem Fahrzeug
             const offset = new THREE.Vector3(
@@ -139,20 +152,35 @@ export class Player extends Character {
                 0,
                 Math.cos(this.inVehicle.rotation + Math.PI / 2) * 2
             );
+
+            // Kopiere Position des Fahrzeugs und addiere Offset
             this.position.copy(this.inVehicle.position).add(offset);
 
             // Übernimm Rotation des Fahrzeugs
             this.rotation = this.inVehicle.rotation;
 
-            // Aktualisiere Mesh-Position und -Rotation
-            this.mesh.position.copy(this.position);
-            this.mesh.rotation.y = this.rotation;
+            // Referenz zum Fahrzeug zwischenspeichern, damit wir deren ejectDriver aufrufen können
+            const vehicle = this.inVehicle;
 
-            // Zeige Spieler-Mesh wieder an
-            this.mesh.visible = true;
-
-            // Referenz zum Fahrzeug löschen
+            // Referenz zum Fahrzeug löschen (wichtig: vor dem Aufruf von ejectDriver!)
             this.inVehicle = null;
+
+            // Aktualisiere Mesh-Position und -Rotation
+            if (this.mesh) {
+                this.mesh.position.copy(this.position);
+                this.mesh.rotation.y = this.rotation;
+                this.mesh.visible = true;
+
+                if (this.debug) console.log("Spieler-Mesh sichtbar gemacht, Position:", this.position);
+            }
+
+            // Informiere das Fahrzeug, dass der Fahrer ausgestiegen ist
+            // Nur wenn nicht vom Fahrzeug selbst aufgerufen
+            if (vehicle.driver === this) {
+                vehicle.ejectDriver();
+
+                if (this.debug) console.log("Fahrzeug informiert, dass Fahrer ausgestiegen ist");
+            }
         }
     }
 
@@ -163,10 +191,14 @@ export class Player extends Character {
             this.health = 0;
             this.die();
         }
+
+        if (this.debug) console.log("Spieler nimmt Schaden:", amount, "Verbleibende Gesundheit:", this.health);
     }
 
     die() {
-        console.log("Spieler gestorben!");
+        if (this.debug) console.log("Spieler ist gestorben!");
+
         // Hier kann später Respawn-Logik hinzugefügt werden
+        this.isActive = false;
     }
 }

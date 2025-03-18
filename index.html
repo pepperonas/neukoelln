@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GTA-Style 3D Game</title>
+    <title>Neuköllnπ</title>
     <style>
         body {
             margin: 0;
@@ -87,5 +87,77 @@
     D/→ - Rechts lenken<br>
     Leertaste - Bremse
 </div>
+
+<div id="debug-overlay"
+     style="position: fixed; bottom: 10px; left: 10px; background-color: rgba(0,0,0,0.7); color: lime; font-family: monospace; padding: 10px; border-radius: 5px; z-index: 9999; max-width: 300px; font-size: 12px; display: none;">
+    <h3 style="margin-top: 0;">Debug Info</h3>
+    <pre id="debug-info"></pre>
+    <div>
+        <button onclick="toggleDebug()"
+                style="background: #444; color: white; border: none; padding: 5px 10px; cursor: pointer;">
+            Toggle Debug
+        </button>
+    </div>
+</div>
+
+<script>
+    // Debug-Info anzeigen
+    let debugEnabled = false;
+    const debugOverlay = document.getElementById('debug-overlay');
+    const debugInfo = document.getElementById('debug-info');
+
+    function toggleDebug() {
+        debugEnabled = !debugEnabled;
+        debugOverlay.style.display = debugEnabled ? 'block' : 'none';
+    }
+
+    // Tastatur-Shortcut für Debug-Modus (F2)
+    window.addEventListener('keydown', function (e) {
+        if (e.key === 'F2') {
+            toggleDebug();
+            e.preventDefault();
+        }
+    });
+
+    // Anzeige von Debug-Informationen
+    function updateDebugInfo(player, car) {
+        if (!debugEnabled) return;
+
+        try {
+            let info = '';
+
+            if (player) {
+                info += `Player: ${player.position.x.toFixed(2)}, ${player.position.y.toFixed(2)}, ${player.position.z.toFixed(2)}\n`;
+                info += `In Vehicle: ${player.inVehicle ? 'Yes' : 'No'}\n`;
+                info += `Rotation: ${player.rotation.toFixed(2)}\n`;
+                info += `Health: ${player.health}\n`;
+                info += `Ammo: ${player.weapon ? player.weapon.ammo : 'N/A'}\n`;
+            }
+
+            if (car) {
+                info += `\nCar: ${car.position.x.toFixed(2)}, ${car.position.y.toFixed(2)}, ${car.position.z.toFixed(2)}\n`;
+                info += `Has Driver: ${car.driver ? 'Yes' : 'No'}\n`;
+                info += `Speed: ${car.speed.toFixed(3)}\n`;
+                info += `Durability: ${car.durability}\n`;
+            }
+
+            info += `\nControls: E = Enter/Exit | Space = Shoot/Brake\n`;
+
+            debugInfo.textContent = info;
+        } catch (e) {
+            debugInfo.textContent = 'Error updating debug info: ' + e.message;
+        }
+    }
+
+    // Exposing to window to access from game code
+    window.gameDebug = {
+        updateDebugInfo,
+        toggleDebug
+    };
+
+    // Initial display
+    debugOverlay.style.display = 'none';
+</script>
+
 </body>
 </html>

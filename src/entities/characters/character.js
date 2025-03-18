@@ -12,6 +12,9 @@ export class Character extends Entity {
         this.runSpeed = options.runSpeed || 0.15;
         this.direction = new THREE.Vector3(0, 0, 1);
         this.inVehicle = null; // Referenz auf Fahrzeug, wenn character in einem Fahrzeug sitzt
+
+        // Debug-Flag
+        this.debug = options.debug || false;
     }
 
     update(deltaTime, inputManager) {
@@ -28,11 +31,28 @@ export class Character extends Entity {
     }
 
     enterVehicle(vehicle) {
+        if (this.debug) {
+            console.log("Character.enterVehicle aufgerufen mit Fahrzeug:", vehicle);
+        }
+
         this.inVehicle = vehicle;
+
+        if (this.debug) {
+            console.log("Character jetzt im Fahrzeug:", this.inVehicle);
+        }
     }
 
     exitVehicle() {
+        if (this.debug) {
+            console.log("Character.exitVehicle aufgerufen, aktuelles Fahrzeug:", this.inVehicle);
+        }
+
+        // Implementierung in abgeleiteten Klassen
         this.inVehicle = null;
+
+        if (this.debug) {
+            console.log("Character jetzt nicht mehr im Fahrzeug");
+        }
     }
 
     damage(amount) {
@@ -42,6 +62,10 @@ export class Character extends Entity {
             this.health = 0;
             this.die();
         }
+
+        if (this.debug) {
+            console.log(`Character nimmt ${amount} Schaden, verbleibende Gesundheit: ${this.health}`);
+        }
     }
 
     heal(amount) {
@@ -50,10 +74,19 @@ export class Character extends Entity {
         if (this.health > this.maxHealth) {
             this.health = this.maxHealth;
         }
+
+        if (this.debug) {
+            console.log(`Character heilt ${amount}, neue Gesundheit: ${this.health}`);
+        }
     }
 
     die() {
         this.isActive = false;
+
+        if (this.debug) {
+            console.log("Character stirbt");
+        }
+
         // In Unterklassen überschreiben für spezifisches Verhalten
     }
 }

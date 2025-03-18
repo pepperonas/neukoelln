@@ -18,6 +18,15 @@ export class GameManager {
         this.isRunning = false;
         this.hasCollided = false; // Flag um mehrfache Kollisionen zu verhindern
 
+        // Tasten-Status-Tracking
+        this.keyStatus = {
+            E: false,
+            SPACE: false
+        };
+
+        // Debug-Flag
+        this.debug = true;
+
         // Set up the update method
         this.engine.update = (deltaTime) => this.update(deltaTime);
     }
@@ -45,6 +54,16 @@ export class GameManager {
 
         // Start the engine
         this.engine.start();
+
+        if (this.debug) {
+            console.log("Spiel gestartet!");
+            console.log("Spieler:", this.player);
+            console.log("Auto:", this.playerCar);
+            console.log("Tasten-Anleitung:");
+            console.log("E: Ein-/Aussteigen");
+            console.log("WASD/Pfeiltasten: Bewegen");
+            console.log("Leertaste: Schießen (zu Fuß) / Bremsen (im Auto)");
+        }
     }
 
     pauseGame() {
@@ -123,6 +142,10 @@ export class GameManager {
 
         // Setze die Position des Spielers
         this.player.setPosition(0, 0, 0);
+
+        if (this.debug) {
+            console.log("Spieler erstellt:", this.player);
+        }
     }
 
     createPlayerCar() {
@@ -143,6 +166,10 @@ export class GameManager {
         if (this.playerCar.mesh) {
             this.playerCar.mesh.position.copy(this.playerCar.position);
             this.playerCar.mesh.rotation.y = this.playerCar.rotation;
+        }
+
+        if (this.debug) {
+            console.log("Auto erstellt:", this.playerCar);
         }
     }
 
@@ -193,33 +220,82 @@ export class GameManager {
     }
 
     handleVehicleInteraction() {
-        // Prüfe, ob E-Taste gedrückt wurde
-        if (this.inputManager.isPressed('KeyE') && !this.eKeyPressed) {
-            this.eKeyPressed = true;
+        // Prüfe, ob E-Taste gedrückt wurde - Einmalpresse erkennen
+        const ePressed = this.inputManager.isPressed('KeyE');
+
+        if (ePressed && !this.keyStatus.E) {
+            this.keyStatus.E = true; // Markieren, dass die Taste gedrückt ist
+
+            if (this.debug) {
+                console.log("E-Taste gedrückt, Spieler inVehicle:", this.player.inVehicle);
+            }
 
             if (this.player.inVehicle) {
                 // Aussteigen
+                if (this.debug) console.log("Versuche auszusteigen...");
+
                 this.player.exitVehicle();
+
+                if (this.debug) {
+                    console.log("Spieler nach Aussteigen:", this.player);
+                    console.log("Auto nach Aussteigen:", this.playerCar);
+                }
             } else {
                 // Einsteigen, wenn ein Auto in der Nähe ist
-                if (this.playerCar && this.player.position.distanceTo(this.playerCar.position) < 3) {
+                const distance = this.player.position.distanceTo(this.playerCar.position);
+
+                if (this.debug) {
+                    console.log("Distanz zum Auto:", distance);
+                }
+
+                if (distance < 3) {
+                    if (this.debug) console.log("Versuche einzusteigen...");
+
+                    // Spieler ins Auto setzen
                     this.playerCar.setDriver(this.player);
+
+                    if (this.debug) {
+                        console.log("Spieler nach Einsteigen:", this.player);
+                        console.log("Auto nach Einsteigen:", this.playerCar);
+                    }
+                } else {
+                    if (this.debug) console.log("Auto zu weit entfernt!");
                 }
             }
-        } else if (!this.inputManager.isPressed('KeyE')) {
-            this.eKeyPressed = false;
+        } else if (!ePressed) {
+            // E-Taste wurde losgelassen
+            this.keyStatus.E = false;
         }
     }
 
     handlePlayerProjectiles() {
-        // Wenn Spieler zu Fuß ist und schießt
-        if (this.player && !this.player.inVehicle && this.inputManager.isPressed('Space')) {
-            const projectile = this.player.shoot();
+        // Prüfe, ob Leertaste gedrückt wurde für Schießen
+        const spacePressed = this.inputManager.isPressed('Space');
 
-            if (projectile) {
-                // Füge Projektil zum EntityManager hinzu
-                this.projectiles.push(this.entityManager.add(projectile));
+        if (spacePressed && !this.keyStatus.SPACE) {
+            // Nur einmal pro Tastendruck auslösen
+            if (this.debug) console.log("Leertaste gedrückt");
+
+            // Wenn Spieler zu Fuß ist und schießt
+            if (this.player && !this.player.inVehicle) {
+                if (this.debug) console.log("Versuche zu schießen...");
+
+                const projectile = this.player.shoot();
+
+                if (projectile) {
+                    // Füge Projektil zum EntityManager hinzu
+                    this.projectiles.push(this.entityManager.add(projectile));
+
+                    if (this.debug) {
+                        console.log("Projektil erstellt:", projectile);
+                    }
+                }
             }
+
+            this.keyStatus.SPACE = true;
+        } else if (!spacePressed) {
+            // Leertaste wurde losgelassen
+            this.keyStatus.SPACE = false;
         }
     }
 
@@ -254,6 +330,11 @@ export class GameManager {
                 if (buildingBoundary.intersectsBox(projectileBoundary)) {
                     projectile.isActive = false;
                     collisionDetected = true;
+
+                    if (this.debug) {
+                        console.log("Projektil kollidiert mit Gebäude");
+                    }
+
                     break;
                 }
             }
@@ -267,6 +348,10 @@ export class GameManager {
                     this.playerCar.damage(projectile.damage);
                     projectile.isActive = false;
                     collisionDetected = true;
+
+                    if (this.debug) {
+                        console.log("Projektil kollidiert mit Auto, Schaden:", projectile.damage);
+                    }
                 }
             }
         });
@@ -294,6 +379,10 @@ export class GameManager {
                     }
 
                     collisionDetected = true;
+
+                    if (this.debug) {
+                        console.log("Auto kollidiert mit Gebäude");
+                    }
                 }
             });
         }
@@ -336,7 +425,7 @@ export class GameManager {
         if (!target) return;
 
         // GTA-Stil-Kamera: Folgt dem Spieler oder Fahrzeug
-        const isInVehicle = target === this.playerCar;
+        const isInVehicle = this.player && this.player.inVehicle;
         const height = isInVehicle ? 15 : 8; // Höhere Kamera für Fahrzeug, niedrigere für Spieler zu Fuß
         const distance = isInVehicle ? 5 : 3; // Größerer Abstand für Fahrzeug
 
@@ -346,5 +435,15 @@ export class GameManager {
             target.position.z + distance
         );
         this.engine.camera.lookAt(target.position);
+
+        updateDebugInfo();
+    }
+
+    updateDebugInfo() {
+        // Prüfe, ob die Debug-Funktion im Fenster verfügbar ist
+        if (window.gameDebug && typeof window.gameDebug.updateDebugInfo === 'function') {
+            window.gameDebug.updateDebugInfo(this.player, this.playerCar);
+        }
     }
 }
+

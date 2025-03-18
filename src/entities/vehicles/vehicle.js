@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Entity } from '../entity.js';
+import {Entity} from '../entity.js';
 
 export class Vehicle extends Entity {
     constructor(options = {}) {
@@ -25,6 +25,12 @@ export class Vehicle extends Entity {
         this.durability = options.durability || 100; // Gesundheit des Fahrzeugs
         this.maxDurability = options.maxDurability || 100;
         this.enterExitDistance = options.enterExitDistance || 2.5; // Wie weit kann der Spieler vom Fahrzeug entfernt sein, um einzusteigen
+
+        // Debug-Flag
+        this.debug = true;
+
+        // Status-Tracking für E-Taste
+        this.eKeyPressed = false;
     }
 
     update(deltaTime, inputManager) {
@@ -85,17 +91,6 @@ export class Vehicle extends Entity {
                     Math.cos(this.rotation)
                 );
             }
-
-            // Ein-/Aussteigen (Taste E)
-            if (inputManager.isPressed('KeyE')) {
-                // Einmaligen Tastendruck sicherstellen
-                if (!this.eKeyPressed) {
-                    this.eKeyPressed = true;
-                    this.handleExitVehicle();
-                }
-            } else {
-                this.eKeyPressed = false;
-            }
         }
 
         // Update position based on direction and speed
@@ -115,6 +110,10 @@ export class Vehicle extends Entity {
     damage(amount) {
         this.durability -= amount;
 
+        if (this.debug) {
+            console.log(`Fahrzeug nimmt ${amount} Schaden, verbleibende Haltbarkeit: ${this.durability}`);
+        }
+
         // Fahrzeug-Beschädigung hier implementieren (z.B. Rauch, Feuer, etc.)
         if (this.durability <= 0) {
             this.durability = 0;
@@ -127,7 +126,9 @@ export class Vehicle extends Entity {
         this.ejectDriver();
 
         // Explosion oder sonstige Zerstörungseffekte hier
-        console.log("Fahrzeug zerstört!");
+        if (this.debug) {
+            console.log("Fahrzeug zerstört!");
+        }
 
         // Deaktiviere Fahrzeug
         this.isActive = false;
@@ -135,32 +136,53 @@ export class Vehicle extends Entity {
 
     // Fahrer ins Fahrzeug setzen
     setDriver(character) {
+        if (this.debug) {
+            console.log("Vehicle.setDriver aufgerufen, Character:", character);
+        }
+
         if (!this.driver) {
             this.driver = character;
             character.enterVehicle(this);
-            console.log("Fahrer eingestiegen");
+
+            if (this.debug) {
+                console.log("Fahrer eingestiegen:", character);
+            }
+
             return true;
         }
+
+        if (this.debug) {
+            console.log("Fahrzeug hat bereits einen Fahrer:", this.driver);
+        }
+
         return false;
     }
 
     // Fahrer aus dem Fahrzeug entfernen
     ejectDriver() {
+        if (this.debug) {
+            console.log("Vehicle.ejectDriver aufgerufen, aktueller Fahrer:", this.driver);
+        }
+
         if (this.driver) {
+            // Speichere Referenz zum Fahrer, dann setze this.driver auf null
             const driver = this.driver;
             this.driver = null;
-            driver.exitVehicle();
-            console.log("Fahrer ausgestiegen");
+
+            // Wenn der Fahrer immer noch in einem Fahrzeug ist (und dieses Fahrzeug ist)
+            // lass ihn aussteigen
+            if (driver.inVehicle === this) {
+                driver.exitVehicle();
+
+                if (this.debug) {
+                    console.log("Fahrer ausgestiegen:", driver);
+                }
+            }
+
             return true;
         }
-        return false;
-    }
 
-    // E-Taste gedrückt: Aussteigen
-    handleExitVehicle() {
-        if (this.driver) {
-            this.ejectDriver();
-        }
+        return false;
     }
 
     // Prüfen, ob ein Charakter nahe genug ist, um einzusteigen
