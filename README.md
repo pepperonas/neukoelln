@@ -40,3 +40,13 @@ npm run build
 - Waffen- und Kampfsystem
 - Missionen und Quests
 - Gegner mit KI
+
+## Spiel starten
+
+```sh
+sudo systemctl restart nginx
+```
+
+```sh
+/var/www/html# npm start -- --host 0.0.0.0 --port 8080
+```
