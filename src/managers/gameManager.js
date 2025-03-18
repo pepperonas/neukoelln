@@ -176,6 +176,7 @@ export class GameManager {
         }
     }
 
+    // Ersetzen Sie die update-Methode mit dieser Version:
     update(deltaTime) {
         if (!this.isRunning) return;
 
@@ -194,6 +195,18 @@ export class GameManager {
         // Update all entities (OHNE Kollisionserkennung)
         this.entityManager.update(deltaTime, this.inputManager);
 
+        // Wichtig: Für den Spieler IMMER Kollisionen prüfen (ohne Delay)
+        if (this.player && !this.player.inVehicle && playerOldPos) {
+            this.handlePlayerCollisions(playerOldPos);
+        }
+
+        // Für das Auto mit Delay prüfen
+        if (this.playerCar && carOldPos) {
+            if (this.collisionDelay <= 0) {
+                this.handleCarCollisions(carOldPos);
+            }
+        }
+
         // Aktualisiere die zu verfolgende Entität für die Kamera
         let trackEntity = this.player;
         if (this.player && this.player.inVehicle) {
@@ -205,12 +218,6 @@ export class GameManager {
 
         // Prüfe Projektile vom Spieler
         this.handlePlayerProjectiles();
-
-        // NACH dem Aktualisieren der Entities: Jetzt Kollisionen prüfen und auflösen
-        // Hier ist der entscheidende Teil für die Kollisionserkennung
-        if (playerOldPos || carOldPos) {
-            this.handleCollisions(playerOldPos, carOldPos);
-        }
 
         // Check boundaries
         this.checkBoundaries(trackEntity);
@@ -300,19 +307,20 @@ export class GameManager {
 
     // NEUE METHODE: Kollisionserkennung und -auflösung
     handleCollisions(playerOldPos, carOldPos) {
-        // Wenn wir noch im Kollisions-Delay sind, keine Prüfung
-        if (this.collisionDelay > 0) return;
+        // Entfernen Sie diese Zeilen, um den Kollisions-Delay zu deaktivieren
+        // if (this.collisionDelay > 0) return;
 
         // Kollisionsbehandlung für Projektile
         this.handleProjectileCollisions();
 
-        // Kollisionsbehandlung für Spieler zu Fuß
+        // Kollisionsbehandlung für Spieler zu Fuß - IMMER ausführen, nicht nur außerhalb des Delays
         if (this.player && !this.player.inVehicle && playerOldPos) {
             const collided = this.handlePlayerCollisions(playerOldPos);
             if (collided) {
                 // Debug-Ausgabe für Kollision
                 console.log("Spieler kollidiert mit Gebäude - Position zurückgesetzt");
-                this.collisionDelay = 5;
+                // Entfernen oder reduzieren Sie den Delay auf 1
+                this.collisionDelay = 1;
             }
         }
 
@@ -322,7 +330,7 @@ export class GameManager {
             if (collided) {
                 // Debug-Ausgabe für Kollision
                 console.log("Auto kollidiert mit Gebäude - Position zurückgesetzt");
-                this.collisionDelay = 10;
+                this.collisionDelay = 3; // Reduzieren auf einen kleineren Wert
             }
         }
     }
