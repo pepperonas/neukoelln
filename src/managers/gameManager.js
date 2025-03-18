@@ -19,7 +19,8 @@ export class GameManager {
         this.projectiles = [];  // Liste der aktiven Projektile
         this.isRunning = false;
         this.isMultiplayer = false; // Neue Zeile hinzufügen
-        this.remotePlayers = []; // Neue Zeile hinzufügen
+        this.remotePlayers = new Map();
+        this.remoteVehicles = new Map();
 
         // Tasten-Status-Tracking
         this.keyStatus = {
@@ -97,6 +98,13 @@ export class GameManager {
             this.remotePlayers.clear();
         }
 
+        if (this.remoteVehicles) {
+            this.remoteVehicles.forEach(vehicle => {
+                this.entityManager.remove(vehicle);
+            });
+            this.remoteVehicles.clear();
+        }
+
         // Cleanup
         this.entityManager.clear();
         this.buildings = [];
@@ -156,7 +164,70 @@ export class GameManager {
         }
     }
 
-    createPlayer() {
+    startGame() {
+        // Create the ground
+        this.createGround();
+
+        // Create road markings
+        this.createRoadMarkings();
+
+        // Create buildings
+        this.createBuildings();
+
+        // Erstelle Spieler-Charakter mit Position abhängig von Spielerrolle
+        this.createPlayerAtPosition(this.getPlayerStartPosition());
+
+        // Create player car with position abhängig von Spielerrolle
+        this.createPlayerCarAtPosition(this.getCarStartPosition());
+
+        // Set up camera
+        this.setupCamera();
+
+        this.isRunning = true;
+
+        // Start the engine
+        this.engine.start();
+
+        if (this.debug) {
+            console.log("Spiel gestartet!");
+            console.log("Spieler:", this.player);
+            console.log("Auto:", this.playerCar);
+            console.log("Gebäude:", this.buildings.length);
+        }
+    }
+
+// Neue Methoden für Startpositionen:
+    getPlayerStartPosition() {
+        // Host startet links, Client startet rechts
+        if (this.isMultiplayer) {
+            if (this.networkManager.isHost) {
+                return {x: -15, y: 0, z: 0};
+            } else {
+                return {x: 15, y: 0, z: 0};
+            }
+        }
+        // Einzelspieler startet in der Mitte
+        return {x: 0, y: 0, z: 0};
+    }
+
+    getCarStartPosition() {
+        // Auto wird in der Nähe des Spielers platziert
+        const playerPos = this.getPlayerStartPosition();
+        // Host: Auto links vom Spieler
+        if (this.isMultiplayer) {
+            if (this.networkManager.isHost) {
+                return {x: playerPos.x - 5, y: 0, z: playerPos.z};
+            } else {
+                // Client: Auto rechts vom Spieler
+                return {x: playerPos.x + 5, y: 0, z: playerPos.z};
+            }
+        }
+        // Einzelspieler: Auto rechts vom Spieler
+        return {x: playerPos.x + 3, y: 0, z: playerPos.z};
+    }
+
+// Neue Methoden für die Erstellung an bestimmten Positionen:
+    createPlayerAtPosition(position) {
         // Nur erstellen, wenn noch kein Spieler existiert
         if (this.player) {
             console.warn("Versuch, einen Spieler zu erstellen, obwohl bereits einer existiert!");
@@ -168,9 +239,32 @@ export class GameManager {
         this.entityManager.add(this.player);
 
         // Setze die Position des Spielers
-        this.player.setPosition(0, 0, 0);
+        this.player.setPosition(position.x, position.y, position.z);
 
         return this.player;
+    }
+
+    createPlayerCarAtPosition(position) {
+        // Stelle sicher, dass nur ein Player-Auto existiert
+        if (this.playerCar) {
+            this.entityManager.remove(this.playerCar);
+        }
+
+        this.playerCar = new Car();
+        this.entityManager.add(this.playerCar);
+
+        // Setze Position und Rotation
+        this.playerCar.position.set(position.x, position.y, position.z);
+        this.playerCar.rotation = 0;
+        this.playerCar.speed = 0;
+
+        // Aktualisiere die Mesh-Position
+        if (this.playerCar.mesh) {
+            this.playerCar.mesh.position.copy(this.playerCar.position);
+            this.playerCar.mesh.rotation.y = this.playerCar.rotation;
+        }
+
+        return this.playerCar;
     }
 
     createPlayerCar() {
@@ -582,7 +676,8 @@ export class GameManager {
         if (!this.remotePlayers.has(playerId)) {
             // Erstelle neuen Remote-Spieler
             const remotePlayer = new Player({
-                color: 0x00ff00  // Andere Farbe für Remote-Spieler
+                color: 0x00ff00,  // Grüne Farbe für Remote-Spieler
+                isRemotePlayer: true  // Flag für Remote-Spieler
             });
 
             // Setze eindeutige ID
@@ -613,17 +708,95 @@ export class GameManager {
             remotePlayer.setRotation(playerData.rotation);
         }
 
-        // Auto-Zustand aktualisieren
+        // WICHTIG: Auto-Zustand aktualisieren
         if (playerData.inVehicle) {
             // Wenn der Remote-Spieler in einem Fahrzeug ist, machen wir ihn unsichtbar
-            // (später könnte man hier das entsprechende Fahrzeug aktualisieren)
-            if (remotePlayer.mesh) {
+            if (remotePlayer.mesh && remotePlayer.mesh.visible) {
+                console.log(`Remote-Spieler ${playerId} wird unsichtbar gesetzt (im Fahrzeug)`);
                 remotePlayer.mesh.visible = false;
             }
         } else {
             // Spieler sichtbar machen, wenn er nicht in einem Fahrzeug ist
-            if (remotePlayer.mesh) {
+            if (remotePlayer.mesh && !remotePlayer.mesh.visible) {
+                console.log(`Remote-Spieler ${playerId} wird sichtbar gesetzt (außerhalb Fahrzeug)`);
                 remotePlayer.mesh.visible = true;
+            }
+        }
+
+        // Fahrzeugdaten aktualisieren
+        if (playerData.vehicle) {
+            // Prüfen, ob wir bereits ein Fahrzeug für diesen Spieler haben
+            if (!this.remoteVehicles.has(playerId)) {
+                // Erstelle ein neues Fahrzeug für den Remote-Spieler
+                const remoteCar = new Car({
+                    color: 0xff0000 // Rote Farbe für Remote-Fahrzeuge
+                });
+
+                // Setze eindeutige ID
+                remoteCar.id = `remote_vehicle_${playerId}`;
+
+                // Füge zum EntityManager hinzu
+                this.entityManager.add(remoteCar);
+
+                // Speichere Referenz
+                this.remoteVehicles.set(playerId, remoteCar);
+
+                console.log(`Neues Remote-Fahrzeug erstellt: ${playerId}`);
+            }
+
+            // Fahrzeug-Referenz abrufen
+            const remoteCar = this.remoteVehicles.get(playerId);
+
+            // Position und Rotation aktualisieren
+            if (playerData.vehicle.position) {
+                remoteCar.position.set(
+                    playerData.vehicle.position.x,
+                    playerData.vehicle.position.y,
+                    playerData.vehicle.position.z
+                );
+
+                if (remoteCar.mesh) {
+                    remoteCar.mesh.position.copy(remoteCar.position);
+                }
+            }
+
+            if (playerData.vehicle.rotation !== undefined) {
+                remoteCar.rotation = playerData.vehicle.rotation;
+
+                if (remoteCar.mesh) {
+                    remoteCar.mesh.rotation.y = remoteCar.rotation;
+                }
+            }
+
+            // Geschwindigkeit aktualisieren
+            if (playerData.vehicle.speed !== undefined) {
+                remoteCar.speed = playerData.vehicle.speed;
+            }
+
+            // Fahrerstatus aktualisieren
+            const hasDriver = playerData.vehicle.hasDriver;
+            if (hasDriver && playerData.inVehicle) {
+                // Der Remote-Spieler sitzt im Auto
+                if (remotePlayer && !remotePlayer.inVehicle) {
+                    // Remote-Spieler ins Auto setzen (ohne die normale Logik auszuführen)
+                    remotePlayer.inVehicle = remoteCar;
+                    if (remotePlayer.mesh) {
+                        remotePlayer.mesh.visible = false;
+                    }
+
+                    // Fahrzeug aktualisieren (ohne die normale Logik auszuführen)
+                    remoteCar.driver = remotePlayer;
+                }
+            } else if (!hasDriver && remoteCar.driver) {
+                // Der Remote-Spieler ist ausgestiegen
+                if (remotePlayer) {
+                    remotePlayer.inVehicle = null;
+                    if (remotePlayer.mesh) {
+                        remotePlayer.mesh.visible = true;
+                    }
+                }
+
+                remoteCar.driver = null;
             }
         }
     }
@@ -631,7 +804,7 @@ export class GameManager {
     sendPlayerUpdate() {
         if (!this.isMultiplayer || !this.player) return;
 
-        // Sende Spieleraktualisierung an andere Spieler
+        // Grunddaten des Spielers
         const playerData = {
             type: 'player_update',
             position: {
@@ -641,9 +814,23 @@ export class GameManager {
             },
             rotation: this.player.rotation,
             inVehicle: this.player.inVehicle ? true : false,
-            vehicleId: this.player.inVehicle ? this.player.inVehicle.id : null,
             health: this.player.health
         };
+
+        // Fahrzeugdaten hinzufügen, wenn wir ein Fahrzeug haben
+        if (this.playerCar) {
+            playerData.vehicle = {
+                id: this.playerCar.id,
+                position: {
+                    x: this.playerCar.position.x,
+                    y: this.playerCar.position.y,
+                    z: this.playerCar.position.z
+                },
+                rotation: this.playerCar.rotation,
+                speed: this.playerCar.speed,
+                hasDriver: this.playerCar.driver ? true : false
+            };
+        }
 
         this.networkManager.sendGameData(playerData);
     }
@@ -726,9 +913,9 @@ export class GameManager {
             console.log(`${this.buildings.length} Gebäude aus Weltdaten erstellt`);
         }
 
-        // Spieler und Auto erstellen
-        this.createPlayer();
-        this.createPlayerCar();
+        // Spieler und Auto erstellen - mit unterschiedlichen Startpositionen je nach Rolle
+        this.createPlayerAtPosition(this.getPlayerStartPosition());
+        this.createPlayerCarAtPosition(this.getCarStartPosition());
 
         // Kamera einrichten
         this.setupCamera();

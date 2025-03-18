@@ -54,18 +54,28 @@ export class EntityManager {
         this.entities.forEach(entity => {
             if (entity && entity.isActive) {
                 // Prüfe, ob es sich um einen Remote-Spieler handelt
-                const isRemotePlayer = entity instanceof Player && entity.id.startsWith('remote_');
+                const isRemotePlayer = entity instanceof Player && entity.id && entity.id.startsWith('remote_');
 
-                // Remote-Spieler nicht mit lokalen Eingaben aktualisieren
-                if (isRemotePlayer) {
-                    // Nur Basis-Update ohne InputManager
+                if (isRemotePlayer && entity.updateWithoutInput) {
+                    // Remote-Spieler: Nur Position und Mesh aktualisieren, keine Eingabe verarbeiten
                     entity.updateWithoutInput(deltaTime);
                 } else {
-                    // Normales Update für lokale Entitäten
+                    // Normale Entität mit Input aktualisieren
                     entity.update(deltaTime, inputManager);
                 }
             }
         });
+    }
+
+    updateWithoutInput(deltaTime) {
+        // Aktualisiere Position und Rotation des Mesh ohne Eingaben zu verarbeiten
+        super.update(deltaTime);
+
+        // Aktualisiere die Mesh-Position
+        if (this.mesh) {
+            this.mesh.position.copy(this.position);
+            this.mesh.rotation.y = this.rotation;
+        }
     }
 
     getByType(constructor) {

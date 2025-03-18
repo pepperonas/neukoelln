@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Vehicle } from './vehicle.js';
+import {Vehicle} from './vehicle.js';
 
 export class Car extends Vehicle {
     constructor(options = {}) {
@@ -18,7 +18,7 @@ export class Car extends Vehicle {
     createBody(color) {
         // Car body
         const carBodyGeometry = new THREE.BoxGeometry(1.5, 0.5, 3);
-        const carBodyMaterial = new THREE.MeshStandardMaterial({ color: color, roughness: 0.5 });
+        const carBodyMaterial = new THREE.MeshStandardMaterial({color: color, roughness: 0.5});
         const carBody = new THREE.Mesh(carBodyGeometry, carBodyMaterial);
         carBody.position.y = 0.5;
         carBody.castShadow = true;
@@ -45,13 +45,13 @@ export class Car extends Vehicle {
 
     createWheels() {
         const wheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.2, 16);
-        const wheelMaterial = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.9 });
+        const wheelMaterial = new THREE.MeshStandardMaterial({color: 0x222222, roughness: 0.9});
 
         const wheelPositions = [
-            { x: -0.7, z: 1 },
-            { x: 0.7, z: 1 },
-            { x: -0.7, z: -1 },
-            { x: 0.7, z: -1 }
+            {x: -0.7, z: 1},
+            {x: 0.7, z: 1},
+            {x: -0.7, z: -1},
+            {x: 0.7, z: -1}
         ];
 
         wheelPositions.forEach(pos => {
@@ -74,8 +74,8 @@ export class Car extends Vehicle {
         });
 
         const headlightPositions = [
-            { x: -0.5, z: 1.5 },
-            { x: 0.5, z: 1.5 }
+            {x: -0.5, z: 1.5},
+            {x: 0.5, z: 1.5}
         ];
 
         this.headlights = [];
@@ -105,7 +105,7 @@ export class Car extends Vehicle {
             this.headlights.push(headlightBeam);
             this.headlightTargets.push({
                 target,
-                originalPosition: { ...pos }
+                originalPosition: {...pos}
             });
         });
 
@@ -118,8 +118,8 @@ export class Car extends Vehicle {
         });
 
         const taillightPositions = [
-            { x: -0.5, z: -1.5 },
-            { x: 0.5, z: -1.5 }
+            {x: -0.5, z: -1.5},
+            {x: 0.5, z: -1.5}
         ];
 
         taillightPositions.forEach(pos => {
