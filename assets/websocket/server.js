@@ -7,7 +7,7 @@ const path = require('path');
 
 // Express-App erstellen
 const app = express();
-π
+
 // Statische Dateien aus dem dist-Verzeichnis bereitstellen
 app.use(express.static(path.join(__dirname, 'dist')));
 
@@ -261,15 +261,13 @@ function broadcastGameData(roomCode, senderId, gameData) {
 
     const room = rooms.get(roomCode);
 
-    // Daten an alle anderen Spieler senden
+    // Daten an ALLE Spieler im Raum senden (inkl. Sender)
     room.players.forEach(player => {
-        if (player.id !== senderId) {
-            player.ws.send(JSON.stringify({
-                type: 'game_data',
-                senderId: senderId,
-                gameData: gameData
-            }));
-        }
+        player.ws.send(JSON.stringify({
+            type: 'game_data',
+            senderId: senderId,
+            gameData: gameData
+        }));
     });
 }
 

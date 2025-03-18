@@ -568,6 +568,12 @@ export class GameManager {
         this.networkManager.onGameData = (data) => {
             if (!data || !data.senderId) return;
 
+            // Ignoriere deine eigenen Updates
+            if (data.senderId === this.networkManager.playerName) {
+                console.log("Eigene Update-Nachricht ignoriert");
+                return;
+            }
+
             const gameData = data.data;
 
             // Je nach Datentyp verschiedene Handler aufrufen
@@ -575,19 +581,17 @@ export class GameManager {
                 console.log("Weltdaten empfangen:", gameData);
                 this.createWorldFromData(gameData);
             } else if (gameData.type === 'player_update') {
-                // Ignoriere eigene Updates
-                if (data.senderId !== this.networkManager.playerName) {
-                    this.updateRemotePlayer(data.senderId, gameData);
-                }
+                this.updateRemotePlayer(data.senderId, gameData);
             }
         };
     }
 
     updateRemotePlayer(playerId, playerData) {
-        console.log(`Aktualisiere Remote-Spieler ${playerId}:`, playerData);
+        console.log(`Aktualisiere Remote-Spieler ${playerId} (bin ${this.networkManager.playerName}):`, playerData);
 
         // Erstelle oder aktualisiere Remote-Spieler
         if (!this.remotePlayers.has(playerId)) {
+            console.log(`Erstelle neuen Remote-Spieler: ${playerId}`);
             // Erstelle neuen Remote-Spieler
             const remotePlayer = new Player({
                 color: 0x00ff00  // Grüne Farbe für Remote-Spieler

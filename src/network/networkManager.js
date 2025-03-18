@@ -190,8 +190,14 @@ export class NetworkManager {
         }
     }
 
+    // Im NetworkManager
     handleGameData(data) {
-        console.log("Game data empfangen:", data);
+        console.log(`Daten von ${data.senderId} empfangen:`, JSON.stringify(data.gameData));
+
+        // Wichtig: Spieler-ID-Check, aber nicht blockieren
+        if (data.senderId === this.playerName) {
+            console.log("Eigene Nachricht empfangen - wird ignoriert");
+        }
 
         if (this.onGameData) {
             this.onGameData({
