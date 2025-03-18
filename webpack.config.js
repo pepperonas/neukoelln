@@ -53,7 +53,7 @@ module.exports = {
     },
     plugins: [
         new HtmlWebpackPlugin({
-            title: 'GTA Style Game',
+            title: 'GTA-Neukölln',
             template: './index.html',
         }),
     ],

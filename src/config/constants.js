@@ -1,6 +1,6 @@
 // Game settings
 export const GAME_SETTINGS = {
-    TITLE: 'GTA-Style Game',
+    TITLE: 'GTA-Neukölln',
     VERSION: '1.0.0',
     DEBUG: true
 };

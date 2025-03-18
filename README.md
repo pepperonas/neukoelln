@@ -1,6 +1,6 @@
-# gta-style-game
+# GTA-Neukölln
 
-Ein 3D GTA-ähnliches Spiel entwickelt mit Three.js und modernem JavaScript.
+Ein GTA-Clonπ entwickelt mit Three.js und modernem JavaScript.
 
 ## Installation
 
@@ -24,12 +24,12 @@ npm run build
 
 - `assets/`: Spielassets (Modelle, Texturen, Sounds)
 - `src/`: Quellcode
-  - `config/`: Spielkonfigurationen
-  - `core/`: Kernsysteme
-  - `entities/`: Spielobjekte
-  - `managers/`: Manager-Klassen
-  - `ui/`: Benutzeroberfläche
-  - `utils/`: Hilfsfunktionen
+    - `config/`: Spielkonfigurationen
+    - `core/`: Kernsysteme
+    - `entities/`: Spielobjekte
+    - `managers/`: Manager-Klassen
+    - `ui/`: Benutzeroberfläche
+    - `utils/`: Hilfsfunktionen
 - `styles/`: CSS-Dateien
 - `dist/`: Kompilierte Dateien (nach Build)
 
