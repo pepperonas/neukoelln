@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { InputManager } from '../core/input.js';
-import { EntityManager } from './entityManager.js';
-import { Car } from '../entities/vehicles/car.js';
-import { Building } from '../entities/environment/building.js';
+import {InputManager} from '../core/input.js';
+import {EntityManager} from './entityManager.js';
+import {Car} from '../entities/vehicles/car.js';
+import {Building} from '../entities/environment/building.js';
 
 export class GameManager {
     constructor(engine) {
@@ -13,6 +13,7 @@ export class GameManager {
         this.player = null;
         this.buildings = [];
         this.isRunning = false;
+        this.hasCollided = false; // Flag um mehrfache Kollisionen zu verhindern
 
         // Set up the update method
         this.engine.update = (deltaTime) => this.update(deltaTime);
@@ -75,7 +76,7 @@ export class GameManager {
 
     createRoadMarkings() {
         const roadMarkingGeometry = new THREE.PlaneGeometry(0.2, 5);
-        const roadMarkingMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
+        const roadMarkingMaterial = new THREE.MeshStandardMaterial({color: 0xffffff});
 
         for (let i = -40; i <= 40; i += 10) {
             for (let j = -40; j <= 40; j += 10) {
@@ -108,14 +109,32 @@ export class GameManager {
     }
 
     createPlayerCar() {
+        // Stelle sicher, dass nur ein Player-Auto existiert
+        if (this.player) {
+            this.entityManager.remove(this.player);
+        }
+
         this.player = new Car();
         this.entityManager.add(this.player);
+
+        // Setze Position und Rotation zurück
+        this.player.position.set(0, 0, 0);
+        this.player.rotation = 0;
+        this.player.speed = 0;
+
+        // Aktualisiere die Mesh-Position
+        if (this.player.mesh) {
+            this.player.mesh.position.copy(this.player.position);
+            this.player.mesh.rotation.y = this.player.rotation;
+        }
     }
 
     setupCamera() {
         // Position the camera based on the car
         this.engine.camera.position.set(0, 15, 0);
-        this.engine.camera.lookAt(this.player.position);
+        if (this.player) {
+            this.engine.camera.lookAt(this.player.position);
+        }
     }
 
     update(deltaTime) {
@@ -132,40 +151,70 @@ export class GameManager {
 
         // Update camera to follow player
         this.updateCamera();
+
+        // Reset collision flag after a delay
+        if (this.hasCollided) {
+            setTimeout(() => {
+                this.hasCollided = false;
+            }, 500); // 500ms Verzögerung zur Vermeidung von Mehrfachkollisionen
+        }
     }
 
     checkCollisions() {
-        if (!this.player) return;
+        if (!this.player || this.hasCollided) return;
+
+        let collisionDetected = false;
 
         this.buildings.forEach(building => {
+            if (!building || !building.mesh || !this.player.mesh) return;
+
             // Simple boundary box collision
-            const buildingBoundary = building.getBoundingBox();
+            const buildingBoundary = new THREE.Box3().setFromObject(building.mesh);
             const carBoundary = new THREE.Box3().setFromObject(this.player.mesh);
 
             if (buildingBoundary.intersectsBox(carBoundary)) {
+                collisionDetected = true;
+
                 // Reverse the movement on collision
                 this.player.speed = -this.player.speed * 0.5;
 
                 // Update position after reversing
                 this.player.position.x += this.player.direction.x * this.player.speed;
                 this.player.position.z += this.player.direction.z * this.player.speed;
-                this.player.mesh.position.copy(this.player.position);
+
+                // Aktualisiere direkt die Mesh-Position, ohne neues Auto zu erstellen
+                if (this.player.mesh) {
+                    this.player.mesh.position.copy(this.player.position);
+                }
             }
         });
+
+        // Setze das Kollisions-Flag wenn eine Kollision erkannt wurde
+        if (collisionDetected) {
+            this.hasCollided = true;
+            console.log("Kollision erkannt!");
+        }
     }
 
     checkBoundaries() {
-        if (!this.player) return;
+        if (!this.player || !this.player.mesh) return;
 
         const boundary = 45;
+        let boundaryHit = false;
+
         if (Math.abs(this.player.position.x) > boundary) {
             this.player.position.x = Math.sign(this.player.position.x) * boundary;
             this.player.speed *= -0.5;
-            this.player.mesh.position.copy(this.player.position);
+            boundaryHit = true;
         }
         if (Math.abs(this.player.position.z) > boundary) {
             this.player.position.z = Math.sign(this.player.position.z) * boundary;
             this.player.speed *= -0.5;
+            boundaryHit = true;
+        }
+
+        // Aktualisiere die Mesh-Position nur, wenn nötig
+        if (boundaryHit && this.player.mesh) {
             this.player.mesh.position.copy(this.player.position);
         }
     }

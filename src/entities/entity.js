@@ -5,7 +5,8 @@ export class Entity {
         this.position = new THREE.Vector3();
         this.rotation = 0;
         this.mesh = null;
-        this.id = Math.random().toString(36).substr(2, 9);
+        // Eindeutige ID für jede Entity
+        this.id = Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
         this.isActive = true;
     }
 
@@ -36,6 +37,39 @@ export class Entity {
     removeFromScene(scene) {
         if (this.mesh) {
             scene.remove(this.mesh);
+        }
+    }
+
+    // Kann von Unterklassen überschrieben werden, um Kollisionsverhalten zu definieren
+    onCollision(otherEntity) {
+        // Standard: Keine Aktion
+    }
+
+    // Hilfsmethode, um Objekte aus dem Speicher zu entfernen
+    dispose() {
+        if (this.mesh) {
+            // Entferne alle Geometrien und Materialien
+            if (this.mesh instanceof THREE.Group) {
+                this.mesh.traverse((child) => {
+                    if (child.geometry) child.geometry.dispose();
+                    if (child.material) {
+                        if (Array.isArray(child.material)) {
+                            child.material.forEach(material => material.dispose());
+                        } else {
+                            child.material.dispose();
+                        }
+                    }
+                });
+            } else {
+                if (this.mesh.geometry) this.mesh.geometry.dispose();
+                if (this.mesh.material) {
+                    if (Array.isArray(this.mesh.material)) {
+                        this.mesh.material.forEach(material => material.dispose());
+                    } else {
+                        this.mesh.material.dispose();
+                    }
+                }
+            }
         }
     }
 }
