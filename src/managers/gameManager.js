@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { InputManager } from '../core/input.js';
 import { EntityManager } from './entityManager.js';
-import { SoundManager } from '../core/sound.js';
 import { Car } from '../entities/vehicles/car.js';
 import { Building } from '../entities/environment/building.js';
 
@@ -10,7 +9,6 @@ export class GameManager {
         this.engine = engine;
         this.inputManager = new InputManager();
         this.entityManager = new EntityManager(engine.scene);
-        this.soundManager = new SoundManager();
 
         this.player = null;
         this.buildings = [];
@@ -21,8 +19,11 @@ export class GameManager {
     }
 
     startGame() {
-        // Welt-Setup
-        this.setupWorld();
+        // Create the ground
+        this.createGround();
+
+        // Create road markings
+        this.createRoadMarkings();
 
         // Create buildings
         this.createBuildings();
@@ -37,17 +38,6 @@ export class GameManager {
 
         // Start the engine
         this.engine.start();
-    }
-
-    setupWorld() {
-        // Create the ground
-        this.createGround();
-
-        // Create road markings
-        this.createRoadMarkings();
-
-        // Set sky color
-        this.engine.scene.background = new THREE.Color(0x87CEEB); // Himmelblau
     }
 
     pauseGame() {
@@ -118,14 +108,7 @@ export class GameManager {
     }
 
     createPlayerCar() {
-        this.player = new Car({
-            color: 0xff0000,  // Rotes Auto
-            maxSpeed: 0.25,
-            acceleration: 0.01,
-            deceleration: 0.005,
-            braking: 0.03,
-            turnSpeed: 0.04
-        });
+        this.player = new Car();
         this.entityManager.add(this.player);
     }
 
@@ -136,7 +119,7 @@ export class GameManager {
     }
 
     update(deltaTime) {
-        if (!this.isRunning) return;
+        if (!this.isRunning || !this.player) return;
 
         // Update all entities
         this.entityManager.update(deltaTime, this.inputManager);
@@ -144,10 +127,8 @@ export class GameManager {
         // Check for collisions
         this.checkCollisions();
 
-        // Check world boundaries for player car
-        if (this.player) {
-            this.player.checkBoundaries(45);
-        }
+        // Check boundaries
+        this.checkBoundaries();
 
         // Update camera to follow player
         this.updateCamera();
@@ -162,10 +143,31 @@ export class GameManager {
             const carBoundary = new THREE.Box3().setFromObject(this.player.mesh);
 
             if (buildingBoundary.intersectsBox(carBoundary)) {
-                // Handle collision in vehicle class
-                this.player.handleCollision();
+                // Reverse the movement on collision
+                this.player.speed = -this.player.speed * 0.5;
+
+                // Update position after reversing
+                this.player.position.x += this.player.direction.x * this.player.speed;
+                this.player.position.z += this.player.direction.z * this.player.speed;
+                this.player.mesh.position.copy(this.player.position);
             }
         });
+    }
+
+    checkBoundaries() {
+        if (!this.player) return;
+
+        const boundary = 45;
+        if (Math.abs(this.player.position.x) > boundary) {
+            this.player.position.x = Math.sign(this.player.position.x) * boundary;
+            this.player.speed *= -0.5;
+            this.player.mesh.position.copy(this.player.position);
+        }
+        if (Math.abs(this.player.position.z) > boundary) {
+            this.player.position.z = Math.sign(this.player.position.z) * boundary;
+            this.player.speed *= -0.5;
+            this.player.mesh.position.copy(this.player.position);
+        }
     }
 
     updateCamera() {
