@@ -1,9 +1,10 @@
 import * as THREE from 'three';
-import {InputManager} from '../core/input.js';
-import {EntityManager} from './entityManager.js';
-import {Car} from '../entities/vehicles/car.js';
-import {Building} from '../entities/environment/building.js';
-import {Player} from '../entities/characters/player.js';
+import { InputManager } from '../core/input.js';
+import { EntityManager } from './entityManager.js';
+import { Car } from '../entities/vehicles/car.js';
+import { Building } from '../entities/environment/building.js';
+import { Player } from '../entities/characters/player.js';
+import { Projectile } from '../entities/weapons/projectile.js';
 
 export class GameManager {
     constructor(engine) {
@@ -16,7 +17,6 @@ export class GameManager {
         this.buildings = [];
         this.projectiles = [];  // Liste der aktiven Projektile
         this.isRunning = false;
-        this.hasCollided = false; // Flag um mehrfache Kollisionen zu verhindern
 
         // Tasten-Status-Tracking
         this.keyStatus = {
@@ -26,6 +26,9 @@ export class GameManager {
 
         // Debug-Flag
         this.debug = true;
+
+        // Kollisionsdelay für einfachere Steuerung
+        this.collisionDelay = 0;
 
         // Set up the update method
         this.engine.update = (deltaTime) => this.update(deltaTime);
@@ -59,10 +62,7 @@ export class GameManager {
             console.log("Spiel gestartet!");
             console.log("Spieler:", this.player);
             console.log("Auto:", this.playerCar);
-            console.log("Tasten-Anleitung:");
-            console.log("E: Ein-/Aussteigen");
-            console.log("WASD/Pfeiltasten: Bewegen");
-            console.log("Leertaste: Schießen (zu Fuß) / Bremsen (im Auto)");
+            console.log("Gebäude:", this.buildings.length);
         }
     }
 
@@ -103,7 +103,7 @@ export class GameManager {
 
     createRoadMarkings() {
         const roadMarkingGeometry = new THREE.PlaneGeometry(0.2, 5);
-        const roadMarkingMaterial = new THREE.MeshStandardMaterial({color: 0xffffff});
+        const roadMarkingMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
 
         for (let i = -40; i <= 40; i += 10) {
             for (let j = -40; j <= 40; j += 10) {
@@ -128,10 +128,14 @@ export class GameManager {
             const z = Math.random() * citySize * 2 - citySize;
 
             // Don't place buildings on the road
-            if (Math.abs(x) < 3 || Math.abs(z) < 3) continue;
+            if (Math.abs(x) < 5 || Math.abs(z) < 5) continue;
 
             const building = new Building(x, z, width, depth, height);
             this.buildings.push(this.entityManager.add(building));
+        }
+
+        if (this.debug) {
+            console.log(`${this.buildings.length} Gebäude erstellt`);
         }
     }
 
@@ -142,10 +146,6 @@ export class GameManager {
 
         // Setze die Position des Spielers
         this.player.setPosition(0, 0, 0);
-
-        if (this.debug) {
-            console.log("Spieler erstellt:", this.player);
-        }
     }
 
     createPlayerCar() {
@@ -167,10 +167,6 @@ export class GameManager {
             this.playerCar.mesh.position.copy(this.playerCar.position);
             this.playerCar.mesh.rotation.y = this.playerCar.rotation;
         }
-
-        if (this.debug) {
-            console.log("Auto erstellt:", this.playerCar);
-        }
     }
 
     setupCamera() {
@@ -184,7 +180,19 @@ export class GameManager {
     update(deltaTime) {
         if (!this.isRunning) return;
 
-        // Update all entities
+        // Speichere alte Positionen für Kollisionsrücksetzen
+        let playerOldPos = null;
+        let carOldPos = null;
+
+        if (this.player) {
+            playerOldPos = this.player.position.clone();
+        }
+
+        if (this.playerCar) {
+            carOldPos = this.playerCar.position.clone();
+        }
+
+        // Update all entities (OHNE Kollisionserkennung)
         this.entityManager.update(deltaTime, this.inputManager);
 
         // Aktualisiere die zu verfolgende Entität für die Kamera
@@ -199,8 +207,8 @@ export class GameManager {
         // Prüfe Projektile vom Spieler
         this.handlePlayerProjectiles();
 
-        // Check for collisions
-        this.checkCollisions();
+        // NACH dem Aktualisieren der Entities: Jetzt Kollisionen prüfen und auflösen
+        this.handleCollisions(playerOldPos, carOldPos);
 
         // Check boundaries
         this.checkBoundaries(trackEntity);
@@ -208,15 +216,18 @@ export class GameManager {
         // Update camera to follow player or vehicle
         this.updateCamera(trackEntity);
 
-        // Reset collision flag after a delay
-        if (this.hasCollided) {
-            setTimeout(() => {
-                this.hasCollided = false;
-            }, 500); // 500ms Verzögerung zur Vermeidung von Mehrfachkollisionen
+        // Update debug info
+        if (typeof window.gameDebug !== 'undefined') {
+            window.gameDebug.updateDebugInfo(this.player, this.playerCar);
         }
 
-        // Projektile aktualisieren
+        // Projektile aktualisieren und aufräumen
         this.updateProjectiles();
+
+        // Reduziere Kollisions-Delay
+        if (this.collisionDelay > 0) {
+            this.collisionDelay--;
+        }
     }
 
     handleVehicleInteraction() {
@@ -226,40 +237,20 @@ export class GameManager {
         if (ePressed && !this.keyStatus.E) {
             this.keyStatus.E = true; // Markieren, dass die Taste gedrückt ist
 
-            if (this.debug) {
-                console.log("E-Taste gedrückt, Spieler inVehicle:", this.player.inVehicle);
-            }
-
             if (this.player.inVehicle) {
                 // Aussteigen
                 if (this.debug) console.log("Versuche auszusteigen...");
 
                 this.player.exitVehicle();
-
-                if (this.debug) {
-                    console.log("Spieler nach Aussteigen:", this.player);
-                    console.log("Auto nach Aussteigen:", this.playerCar);
-                }
             } else {
                 // Einsteigen, wenn ein Auto in der Nähe ist
                 const distance = this.player.position.distanceTo(this.playerCar.position);
-
-                if (this.debug) {
-                    console.log("Distanz zum Auto:", distance);
-                }
 
                 if (distance < 3) {
                     if (this.debug) console.log("Versuche einzusteigen...");
 
                     // Spieler ins Auto setzen
                     this.playerCar.setDriver(this.player);
-
-                    if (this.debug) {
-                        console.log("Spieler nach Einsteigen:", this.player);
-                        console.log("Auto nach Einsteigen:", this.playerCar);
-                    }
-                } else {
-                    if (this.debug) console.log("Auto zu weit entfernt!");
                 }
             }
         } else if (!ePressed) {
@@ -274,7 +265,6 @@ export class GameManager {
 
         if (spacePressed && !this.keyStatus.SPACE) {
             // Nur einmal pro Tastendruck auslösen
-            if (this.debug) console.log("Leertaste gedrückt");
 
             // Wenn Spieler zu Fuß ist und schießt
             if (this.player && !this.player.inVehicle) {
@@ -285,10 +275,6 @@ export class GameManager {
                 if (projectile) {
                     // Füge Projektil zum EntityManager hinzu
                     this.projectiles.push(this.entityManager.add(projectile));
-
-                    if (this.debug) {
-                        console.log("Projektil erstellt:", projectile);
-                    }
                 }
             }
 
@@ -302,8 +288,7 @@ export class GameManager {
     updateProjectiles() {
         // Entferne inaktive Projektile aus der Liste
         this.projectiles = this.projectiles.filter(p => {
-            // Wenn das Projektil nicht mehr aktiv ist, entferne es aus der Liste
-            if (!p.isActive) {
+            if (!p || !p.isActive) {
                 this.entityManager.remove(p);
                 return false;
             }
@@ -311,85 +296,124 @@ export class GameManager {
         });
     }
 
-    checkCollisions() {
-        if (this.hasCollided) return;
+    // NEUE METHODE: Kollisionserkennung und -auflösung
+    handleCollisions(playerOldPos, carOldPos) {
+        // Wenn wir noch im Kollisions-Delay sind, keine Prüfung
+        if (this.collisionDelay > 0) return;
 
-        let collisionDetected = false;
+        // Kollisionsbehandlung für Projektile
+        this.handleProjectileCollisions();
 
-        // Kollisionen zwischen Projektilen und Gebäuden/Fahrzeugen
+        // Kollisionsbehandlung für Spieler zu Fuß
+        if (this.player && !this.player.inVehicle) {
+            this.handlePlayerCollisions(playerOldPos);
+        }
+
+        // Kollisionsbehandlung für Auto
+        if (this.playerCar) {
+            this.handleCarCollisions(carOldPos);
+        }
+    }
+
+    handleProjectileCollisions() {
         this.projectiles.forEach(projectile => {
-            if (!projectile.isActive) return;
+            if (!projectile || !projectile.isActive || !projectile.mesh) return;
+
+            // Projektil-Bounding Box
+            const projectileBox = new THREE.Box3().setFromObject(projectile.mesh);
 
             // Prüfe Kollision mit Gebäuden
             for (const building of this.buildings) {
-                if (!building || !building.mesh || !projectile.mesh) continue;
+                if (!building || !building.mesh) continue;
 
-                const buildingBoundary = new THREE.Box3().setFromObject(building.mesh);
-                const projectileBoundary = new THREE.Box3().setFromObject(projectile.mesh);
+                const buildingBox = new THREE.Box3().setFromObject(building.mesh);
 
-                if (buildingBoundary.intersectsBox(projectileBoundary)) {
+                if (buildingBox.intersectsBox(projectileBox)) {
                     projectile.isActive = false;
-                    collisionDetected = true;
-
-                    if (this.debug) {
-                        console.log("Projektil kollidiert mit Gebäude");
-                    }
-
+                    if (this.debug) console.log("Projektil trifft Gebäude");
                     break;
                 }
             }
 
-            // Prüfe Kollision mit Fahrzeug
-            if (projectile.isActive && this.playerCar && this.playerCar.mesh && projectile.owner !== this.playerCar) {
-                const carBoundary = new THREE.Box3().setFromObject(this.playerCar.mesh);
-                const projectileBoundary = new THREE.Box3().setFromObject(projectile.mesh);
+            // Prüfe Kollision mit Fahrzeug, wenn Projektil nicht vom Fahrzeug kommt
+            if (projectile.isActive && this.playerCar && this.playerCar.mesh &&
+                projectile.owner !== this.playerCar) {
 
-                if (carBoundary.intersectsBox(projectileBoundary)) {
+                const carBox = new THREE.Box3().setFromObject(this.playerCar.mesh);
+
+                if (carBox.intersectsBox(projectileBox)) {
                     this.playerCar.damage(projectile.damage);
                     projectile.isActive = false;
-                    collisionDetected = true;
-
-                    if (this.debug) {
-                        console.log("Projektil kollidiert mit Auto, Schaden:", projectile.damage);
-                    }
+                    if (this.debug) console.log("Projektil trifft Auto");
                 }
             }
         });
+    }
 
-        // Fahrzeugkollisionen nur prüfen, wenn Spieler im Fahrzeug ist
-        if (this.player && this.player.inVehicle && this.playerCar) {
-            // Prüfe Kollision mit Gebäuden
-            this.buildings.forEach(building => {
-                if (!building || !building.mesh || !this.playerCar.mesh) return;
+    handlePlayerCollisions(oldPos) {
+        if (!this.player || !this.player.mesh || !oldPos) return;
 
-                const buildingBoundary = new THREE.Box3().setFromObject(building.mesh);
-                const carBoundary = new THREE.Box3().setFromObject(this.playerCar.mesh);
+        const playerBox = new THREE.Box3().setFromObject(this.player.mesh);
+        let hasCollision = false;
 
-                if (buildingBoundary.intersectsBox(carBoundary)) {
-                    // Reverse the movement on collision
-                    this.playerCar.speed = -this.playerCar.speed * 0.5;
+        // Prüfe Kollision mit Gebäuden
+        for (const building of this.buildings) {
+            if (!building || !building.mesh) continue;
 
-                    // Update position after reversing
-                    this.playerCar.position.x += this.playerCar.direction.x * this.playerCar.speed;
-                    this.playerCar.position.z += this.playerCar.direction.z * this.playerCar.speed;
+            const buildingBox = new THREE.Box3().setFromObject(building.mesh);
 
-                    // Aktualisiere direkt die Mesh-Position
-                    if (this.playerCar.mesh) {
-                        this.playerCar.mesh.position.copy(this.playerCar.position);
-                    }
-
-                    collisionDetected = true;
-
-                    if (this.debug) {
-                        console.log("Auto kollidiert mit Gebäude");
-                    }
-                }
-            });
+            if (buildingBox.intersectsBox(playerBox)) {
+                hasCollision = true;
+                if (this.debug) console.log("Spieler kollidiert mit Gebäude");
+                break;
+            }
         }
 
-        // Setze das Kollisions-Flag wenn eine Kollision erkannt wurde
-        if (collisionDetected) {
-            this.hasCollided = true;
+        // Wenn eine Kollision erkannt wurde, setze Position zurück
+        if (hasCollision) {
+            this.player.position.copy(oldPos);
+            this.player.mesh.position.copy(oldPos);
+            this.collisionDelay = 5; // Kleiner Delay für bessere Steuerung
+        }
+    }
+
+    handleCarCollisions(oldPos) {
+        if (!this.playerCar || !this.playerCar.mesh || !oldPos) return;
+
+        const carBox = new THREE.Box3().setFromObject(this.playerCar.mesh);
+        let hasCollision = false;
+
+        // Prüfe Kollision mit Gebäuden
+        for (const building of this.buildings) {
+            if (!building || !building.mesh) continue;
+
+            const buildingBox = new THREE.Box3().setFromObject(building.mesh);
+
+            if (buildingBox.intersectsBox(carBox)) {
+                hasCollision = true;
+                if (this.debug) console.log("Auto kollidiert mit Gebäude");
+                break;
+            }
+        }
+
+        // Wenn eine Kollision erkannt wurde, setze Position zurück
+        if (hasCollision) {
+            this.playerCar.position.copy(oldPos);
+            this.playerCar.mesh.position.copy(oldPos);
+
+            // Setze Geschwindigkeit zurück
+            this.playerCar.speed = -this.playerCar.speed * 0.3;
+
+            // Wenn ein Fahrer im Auto ist, aktualisiere auch dessen Position
+            if (this.playerCar.driver) {
+                this.playerCar.driver.position.copy(oldPos);
+
+                if (this.playerCar.driver.mesh) {
+                    this.playerCar.driver.mesh.position.copy(oldPos);
+                }
+            }
+
+            this.collisionDelay = 5; // Kleiner Delay für bessere Steuerung
         }
     }
 
@@ -399,24 +423,31 @@ export class GameManager {
         const boundary = 45;
         let boundaryHit = false;
 
-        if (Math.abs(entity.position.x) > boundary) {
-            entity.position.x = Math.sign(entity.position.x) * boundary;
-            if (entity === this.playerCar) {
-                entity.speed *= -0.5;
-            }
+        // X-Grenze
+        if (entity.position.x > boundary) {
+            entity.position.x = boundary;
+            boundaryHit = true;
+        } else if (entity.position.x < -boundary) {
+            entity.position.x = -boundary;
             boundaryHit = true;
         }
 
-        if (Math.abs(entity.position.z) > boundary) {
-            entity.position.z = Math.sign(entity.position.z) * boundary;
-            if (entity === this.playerCar) {
-                entity.speed *= -0.5;
-            }
+        // Z-Grenze
+        if (entity.position.z > boundary) {
+            entity.position.z = boundary;
+            boundaryHit = true;
+        } else if (entity.position.z < -boundary) {
+            entity.position.z = -boundary;
             boundaryHit = true;
         }
 
-        // Aktualisiere die Mesh-Position nur, wenn nötig
-        if (boundaryHit && entity.mesh) {
+        // Bei Grenzüberschreitung Geschwindigkeit reduzieren (nur für Fahrzeug)
+        if (boundaryHit) {
+            if (entity === this.playerCar) {
+                entity.speed *= -0.3;
+            }
+
+            // Aktualisiere Mesh-Position
             entity.mesh.position.copy(entity.position);
         }
     }
@@ -435,15 +466,12 @@ export class GameManager {
             target.position.z + distance
         );
         this.engine.camera.lookAt(target.position);
-
-        updateDebugInfo();
     }
 
+    // Debug-Info-Aktualisierung
     updateDebugInfo() {
-        // Prüfe, ob die Debug-Funktion im Fenster verfügbar ist
         if (window.gameDebug && typeof window.gameDebug.updateDebugInfo === 'function') {
             window.gameDebug.updateDebugInfo(this.player, this.playerCar);
         }
     }
 }
-

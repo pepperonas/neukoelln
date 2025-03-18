@@ -11,7 +11,12 @@ export class Entity {
     }
 
     update(deltaTime) {
-        // To be overridden by child classes
+        // Basic update method, to be overridden by subclasses
+        // This just keeps the mesh in sync with the entity position
+        if (this.mesh) {
+            this.mesh.position.copy(this.position);
+            this.mesh.rotation.y = this.rotation;
+        }
     }
 
     setPosition(x, y, z) {
@@ -40,15 +45,55 @@ export class Entity {
         }
     }
 
-    // Kann von Unterklassen überschrieben werden, um Kollisionsverhalten zu definieren
-    onCollision(otherEntity) {
-        // Standard: Keine Aktion
+    // Get bounding box (Kollisionsbox)
+    getBoundingBox() {
+        if (!this.mesh) return null;
+        return new THREE.Box3().setFromObject(this.mesh);
     }
 
-    // Hilfsmethode, um Objekte aus dem Speicher zu entfernen
+    // Check collision with another entity
+    collidesWith(otherEntity) {
+        if (!this.mesh || !otherEntity || !otherEntity.mesh) return false;
+
+        const thisBox = this.getBoundingBox();
+        const otherBox = otherEntity.getBoundingBox();
+
+        if (!thisBox || !otherBox) return false;
+
+        return thisBox.intersectsBox(otherBox);
+    }
+
+    // Optional: Method to add debugging visuals (bounding box visualization)
+    addDebugVisuals(scene) {
+        if (!this.mesh || !scene) return;
+
+        // Create wireframe box helper
+        const boxHelper = new THREE.BoxHelper(this.mesh, 0xff0000);
+        this.debugVisuals = boxHelper;
+        scene.add(boxHelper);
+    }
+
+    // Update debug visuals
+    updateDebugVisuals() {
+        if (this.debugVisuals) {
+            this.debugVisuals.update();
+        }
+    }
+
+    // Remove debug visuals
+    removeDebugVisuals(scene) {
+        if (this.debugVisuals && scene) {
+            scene.remove(this.debugVisuals);
+            this.debugVisuals = null;
+        }
+    }
+
+    // Dispose of resources
     dispose() {
+        this.removeDebugVisuals();
+
         if (this.mesh) {
-            // Entferne alle Geometrien und Materialien
+            // Dispose of geometries and materials
             if (this.mesh instanceof THREE.Group) {
                 this.mesh.traverse((child) => {
                     if (child.geometry) child.geometry.dispose();
