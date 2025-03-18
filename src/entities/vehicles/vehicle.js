@@ -171,7 +171,7 @@ export class Vehicle extends Entity {
         return false;
     }
 
-    // Fahrer aus dem Fahrzeug entfernen
+    // Alternative Implementierung für ein sanfteres Anhalten
     ejectDriver() {
         if (this.debug) {
             console.log("Vehicle.ejectDriver aufgerufen, aktueller Fahrer:", this.driver);
@@ -182,15 +182,27 @@ export class Vehicle extends Entity {
             const driver = this.driver;
             this.driver = null;
 
-            // Wenn der Fahrer immer noch in einem Fahrzeug ist (und dieses Fahrzeug ist)
-            // lass ihn aussteigen
-            if (driver.inVehicle === this) {
-                driver.exitVehicle();
+            // Fahrzeug sofort anhalten wenn der Fahrer aussteigt
+            this.speed = 0;
 
-                if (this.debug) {
-                    console.log("Fahrer ausgestiegen:", driver);
-                }
+            // Optional: Alle Kräfte zurücksetzen
+            if (this.physics && this.physics.velocity) {
+                this.physics.velocity.set(0, 0, 0);
             }
+
+            // Eine kleine Verzögerung vor dem Aussteigen, um sicherzustellen,
+            // dass das Fahrzeug vollständig anhält
+            setTimeout(() => {
+                // Wenn der Fahrer immer noch in einem Fahrzeug ist (und dieses Fahrzeug ist)
+                // lass ihn aussteigen
+                if (driver.inVehicle === this) {
+                    driver.exitVehicle();
+
+                    if (this.debug) {
+                        console.log("Fahrer ausgestiegen:", driver);
+                    }
+                }
+            }, 100); // 100ms Verzögerung
 
             return true;
         }

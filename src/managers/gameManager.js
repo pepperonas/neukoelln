@@ -139,12 +139,20 @@ export class GameManager {
     }
 
     createPlayer() {
+        // Nur erstellen, wenn noch kein Spieler existiert
+        if (this.player) {
+            console.warn("Versuch, einen Spieler zu erstellen, obwohl bereits einer existiert!");
+            return this.player;
+        }
+
         // Erstelle einen neuen Spieler
         this.player = new Player();
         this.entityManager.add(this.player);
 
         // Setze die Position des Spielers
         this.player.setPosition(0, 0, 0);
+
+        return this.player;
     }
 
     createPlayerCar() {
@@ -373,13 +381,16 @@ export class GameManager {
     handlePlayerCollisions(oldPos) {
         if (!this.player || !this.player.mesh || !oldPos) return false;
 
+        // Falls der Spieler nicht aktiv ist, keine Kollisionsprüfung durchführen
+        if (!this.player.isActive) return false;
+
         // Erstelle eine BoundingBox für den Spieler
         const playerBox = new THREE.Box3().setFromObject(this.player.mesh);
         let hasCollision = false;
 
         // Prüfe Kollision mit Gebäuden
         for (const building of this.buildings) {
-            if (!building || !building.mesh) continue;
+            if (!building || !building.mesh || !building.isActive) continue;
 
             const buildingBox = new THREE.Box3().setFromObject(building.mesh);
 
@@ -391,8 +402,14 @@ export class GameManager {
 
         // Wenn eine Kollision erkannt wurde, setze Position zurück
         if (hasCollision) {
-            this.player.position.copy(oldPos);
-            this.player.mesh.position.copy(oldPos);
+            // Position direkt über die setPosition-Methode zurücksetzen, nicht über position.copy
+            this.player.setPosition(oldPos.x, oldPos.y, oldPos.z);
+
+            // Explizit prüfen, ob mesh vorhanden ist, bevor Position gesetzt wird
+            if (this.player.mesh) {
+                this.player.mesh.position.copy(oldPos);
+            }
+
             return true;
         }
 

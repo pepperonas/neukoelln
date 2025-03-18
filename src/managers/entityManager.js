@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {Player} from '../entities/characters/player.js';
 
 export class EntityManager {
     constructor(scene) {
@@ -12,6 +13,16 @@ export class EntityManager {
         if (this.entityMap.has(entity.id)) {
             console.warn(`Entity mit ID ${entity.id} existiert bereits.`);
             return entity;
+        }
+
+        // Spezielle Prüfung für Player-Objekte
+        if (entity instanceof Player) {
+            // Überprüfe, ob bereits ein Player in der Liste existiert
+            const existingPlayers = this.entities.filter(e => e instanceof Player);
+            if (existingPlayers.length > 0) {
+                console.warn("Versuch, einen zweiten Player hinzuzufügen! Dies ist nicht erlaubt.");
+                return existingPlayers[0]; // Gib den existierenden Player zurück
+            }
         }
 
         this.entities.push(entity);
@@ -32,8 +43,20 @@ export class EntityManager {
     }
 
     update(deltaTime, inputManager) {
+        // Stelle sicher, dass kein doppelter Player aktualisiert wird
+        let playerUpdated = false;
+
         this.entities.forEach(entity => {
             if (entity && entity.isActive) {
+                // Spezielle Behandlung für Player-Objekte
+                if (entity instanceof Player) {
+                    if (playerUpdated) {
+                        console.warn("Mehrere Player-Instanzen gefunden!");
+                        return; // Aktualisiere nur den ersten Player
+                    }
+                    playerUpdated = true;
+                }
+
                 entity.update(deltaTime, inputManager);
             }
         });
