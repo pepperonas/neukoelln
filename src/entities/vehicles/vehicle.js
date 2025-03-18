@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {Entity} from '../entity.js';
+import { Entity } from '../entity.js';
 
 export class Vehicle extends Entity {
     constructor(options = {}) {
@@ -7,11 +7,11 @@ export class Vehicle extends Entity {
 
         // Vehicle properties
         this.speed = 0;
-        this.maxSpeed = options.maxSpeed || 0.25;
-        this.acceleration = options.acceleration || 0.01;
-        this.deceleration = options.deceleration || 0.005;
-        this.braking = options.braking || 0.03;
-        this.turnSpeed = options.turnSpeed || 0.04;
+        this.maxSpeed = options.maxSpeed || 0.1;        // Reduziert von 0.25 auf 0.1
+        this.acceleration = options.acceleration || 0.005; // Reduziert von 0.01 auf 0.005
+        this.deceleration = options.deceleration || 0.003; // Reduziert von 0.005 auf 0.003
+        this.braking = options.braking || 0.015;        // Reduziert von 0.03 auf 0.015
+        this.turnSpeed = options.turnSpeed || 0.03;     // Reduziert von 0.04 auf 0.03
         this.direction = new THREE.Vector3(0, 0, 1);
 
         // Create vehicle mesh group
@@ -90,5 +90,16 @@ export class Vehicle extends Entity {
         this.wheels.forEach(wheel => {
             wheel.rotation.x += this.speed * 0.5;
         });
+    }
+
+    damage(amount) {
+        this.durability -= amount;
+        if (this.durability <= 0) {
+            this.destroy();
+        }
+    }
+
+    destroy() {
+        this.isActive = false;
     }
 }

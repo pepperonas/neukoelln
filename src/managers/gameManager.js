@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { InputManager } from '../core/input.js';
 import { EntityManager } from './entityManager.js';
+import { SoundManager } from '../core/sound.js';
 import { Car } from '../entities/vehicles/car.js';
 import { Building } from '../entities/environment/building.js';
 
@@ -9,6 +10,7 @@ export class GameManager {
         this.engine = engine;
         this.inputManager = new InputManager();
         this.entityManager = new EntityManager(engine.scene);
+        this.soundManager = new SoundManager();
 
         this.player = null;
         this.buildings = [];
@@ -19,11 +21,8 @@ export class GameManager {
     }
 
     startGame() {
-        // Create the ground
-        this.createGround();
-
-        // Create road markings
-        this.createRoadMarkings();
+        // Welt-Setup
+        this.setupWorld();
 
         // Create buildings
         this.createBuildings();
@@ -38,6 +37,17 @@ export class GameManager {
 
         // Start the engine
         this.engine.start();
+    }
+
+    setupWorld() {
+        // Create the ground
+        this.createGround();
+
+        // Create road markings
+        this.createRoadMarkings();
+
+        // Set sky color
+        this.engine.scene.background = new THREE.Color(0x87CEEB); // Himmelblau
     }
 
     pauseGame() {
@@ -69,6 +79,7 @@ export class GameManager {
         const ground = new THREE.Mesh(groundGeometry, groundMaterial);
         ground.rotation.x = -Math.PI / 2;
         ground.position.y = -0.5;
+        ground.receiveShadow = true;
         this.engine.scene.add(ground);
     }
 
@@ -81,6 +92,7 @@ export class GameManager {
                 const roadMarking = new THREE.Mesh(roadMarkingGeometry, roadMarkingMaterial);
                 roadMarking.rotation.x = -Math.PI / 2;
                 roadMarking.position.set(i, -0.49, j);
+                roadMarking.receiveShadow = true;
                 this.engine.scene.add(roadMarking);
             }
         }
@@ -106,7 +118,14 @@ export class GameManager {
     }
 
     createPlayerCar() {
-        this.player = new Car();
+        this.player = new Car({
+            color: 0xff0000,  // Rotes Auto
+            maxSpeed: 0.25,
+            acceleration: 0.01,
+            deceleration: 0.005,
+            braking: 0.03,
+            turnSpeed: 0.04
+        });
         this.entityManager.add(this.player);
     }
 
@@ -125,6 +144,11 @@ export class GameManager {
         // Check for collisions
         this.checkCollisions();
 
+        // Check world boundaries for player car
+        if (this.player) {
+            this.player.checkBoundaries(45);
+        }
+
         // Update camera to follow player
         this.updateCamera();
     }
@@ -138,30 +162,10 @@ export class GameManager {
             const carBoundary = new THREE.Box3().setFromObject(this.player.mesh);
 
             if (buildingBoundary.intersectsBox(carBoundary)) {
-                // Reverse the movement on collision
-                this.player.speed = -this.player.speed * 0.5;
-
-                // Update position after reversing
-                this.player.position.x += this.player.direction.x * this.player.speed;
-                this.player.position.z += this.player.direction.z * this.player.speed;
-                this.player.mesh.position.copy(this.player.position);
+                // Handle collision in vehicle class
+                this.player.handleCollision();
             }
         });
-
-        // Check world boundaries
-        if (!this.player) return;
-
-        const boundary = 45;
-        if (Math.abs(this.player.position.x) > boundary) {
-            this.player.position.x = Math.sign(this.player.position.x) * boundary;
-            this.player.speed *= -0.5;
-            this.player.mesh.position.copy(this.player.position);
-        }
-        if (Math.abs(this.player.position.z) > boundary) {
-            this.player.position.z = Math.sign(this.player.position.z) * boundary;
-            this.player.speed *= -0.5;
-            this.player.mesh.position.copy(this.player.position);
-        }
     }
 
     updateCamera() {
