@@ -89,14 +89,40 @@ export class Player extends Character {
         this.mesh.rotation.y = this.rotation;
     }
 
+    // In der Player-Klasse hinzufügen:
     updateWithoutInput(deltaTime) {
-        // Basis-Update ohne Bewegungslogik
+        // Nur das Mesh-Update durchführen, keine Bewegungssteuerung
         super.update(deltaTime);
 
         // Aktualisiere Position und Rotation des Mesh
         if (this.mesh) {
             this.mesh.position.copy(this.position);
             this.mesh.rotation.y = this.rotation;
+
+            // Stelle sicher, dass die Sichtbarkeit korrekt ist
+            if (this.inVehicle) {
+                if (this.mesh.visible) {
+                    this.mesh.visible = false;
+
+                    // Auch Kind-Meshes unsichtbar setzen
+                    if (this.mesh.children) {
+                        this.mesh.children.forEach(child => {
+                            child.visible = false;
+                        });
+                    }
+                }
+            } else {
+                if (!this.mesh.visible) {
+                    this.mesh.visible = true;
+
+                    // Auch Kind-Meshes sichtbar setzen
+                    if (this.mesh.children) {
+                        this.mesh.children.forEach(child => {
+                            child.visible = true;
+                        });
+                    }
+                }
+            }
         }
     }
 

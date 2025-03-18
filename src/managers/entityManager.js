@@ -67,17 +67,6 @@ export class EntityManager {
         });
     }
 
-    updateWithoutInput(deltaTime) {
-        // Aktualisiere Position und Rotation des Mesh ohne Eingaben zu verarbeiten
-        super.update(deltaTime);
-
-        // Aktualisiere die Mesh-Position
-        if (this.mesh) {
-            this.mesh.position.copy(this.position);
-            this.mesh.rotation.y = this.rotation;
-        }
-    }
-
     getByType(constructor) {
         return this.entities.filter(entity => entity instanceof constructor);
     }

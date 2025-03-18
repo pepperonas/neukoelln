@@ -11,14 +11,14 @@ export class GameManager {
         this.engine = engine;
         this.inputManager = new InputManager();
         this.entityManager = new EntityManager(engine.scene);
-        this.networkManager = new NetworkManager(this); // Neue Zeile hinzufügen
+        this.networkManager = new NetworkManager(this);
 
         this.player = null;     // Spieler-Charakter
         this.playerCar = null;  // Auto des Spielers
         this.buildings = [];
         this.projectiles = [];  // Liste der aktiven Projektile
         this.isRunning = false;
-        this.isMultiplayer = false; // Neue Zeile hinzufügen
+        this.isMultiplayer = false;
         this.remotePlayers = new Map();
         this.remoteVehicles = new Map();
 
@@ -48,11 +48,11 @@ export class GameManager {
         // Create buildings
         this.createBuildings();
 
-        // Erstelle Spieler-Charakter
-        this.createPlayer();
+        // Erstelle Spieler-Charakter mit Position abhängig von Spielerrolle
+        this.createPlayerAtPosition(this.getPlayerStartPosition());
 
-        // Create player car
-        this.createPlayerCar();
+        // Create player car with position abhängig von Spielerrolle
+        this.createPlayerCarAtPosition(this.getCarStartPosition());
 
         // Set up camera
         this.setupCamera();
@@ -98,6 +98,7 @@ export class GameManager {
             this.remotePlayers.clear();
         }
 
+        // Remote-Fahrzeuge entfernen
         if (this.remoteVehicles) {
             this.remoteVehicles.forEach(vehicle => {
                 this.entityManager.remove(vehicle);
@@ -164,39 +165,7 @@ export class GameManager {
         }
     }
 
-    startGame() {
-        // Create the ground
-        this.createGround();
-
-        // Create road markings
-        this.createRoadMarkings();
-
-        // Create buildings
-        this.createBuildings();
-
-        // Erstelle Spieler-Charakter mit Position abhängig von Spielerrolle
-        this.createPlayerAtPosition(this.getPlayerStartPosition());
-
-        // Create player car with position abhängig von Spielerrolle
-        this.createPlayerCarAtPosition(this.getCarStartPosition());
-
-        // Set up camera
-        this.setupCamera();
-
-        this.isRunning = true;
-
-        // Start the engine
-        this.engine.start();
-
-        if (this.debug) {
-            console.log("Spiel gestartet!");
-            console.log("Spieler:", this.player);
-            console.log("Auto:", this.playerCar);
-            console.log("Gebäude:", this.buildings.length);
-        }
-    }
-
-// Neue Methoden für Startpositionen:
+    // Neue Methoden für Startpositionen:
     getPlayerStartPosition() {
         // Host startet links, Client startet rechts
         if (this.isMultiplayer) {
@@ -226,7 +195,7 @@ export class GameManager {
         return {x: playerPos.x + 3, y: 0, z: playerPos.z};
     }
 
-// Neue Methoden für die Erstellung an bestimmten Positionen:
+    // Neue Methoden für die Erstellung an bestimmten Positionen:
     createPlayerAtPosition(position) {
         // Nur erstellen, wenn noch kein Spieler existiert
         if (this.player) {
@@ -240,6 +209,11 @@ export class GameManager {
 
         // Setze die Position des Spielers
         this.player.setPosition(position.x, position.y, position.z);
+
+        // Stelle sicher, dass der Spieler sichtbar ist
+        if (this.player.mesh) {
+            this.player.mesh.visible = true;
+        }
 
         return this.player;
     }
@@ -267,27 +241,6 @@ export class GameManager {
         return this.playerCar;
     }
 
-    createPlayerCar() {
-        // Stelle sicher, dass nur ein Player-Auto existiert
-        if (this.playerCar) {
-            this.entityManager.remove(this.playerCar);
-        }
-
-        this.playerCar = new Car();
-        this.entityManager.add(this.playerCar);
-
-        // Setze Position und Rotation zurück
-        this.playerCar.position.set(3, 0, 0);  // Auto neben Spieler platzieren
-        this.playerCar.rotation = 0;
-        this.playerCar.speed = 0;
-
-        // Aktualisiere die Mesh-Position
-        if (this.playerCar.mesh) {
-            this.playerCar.mesh.position.copy(this.playerCar.position);
-            this.playerCar.mesh.rotation.y = this.playerCar.rotation;
-        }
-    }
-
     setupCamera() {
         // Position the camera based on the player
         this.engine.camera.position.set(0, 15, 0);
@@ -296,7 +249,6 @@ export class GameManager {
         }
     }
 
-    // Ersetzen Sie die update-Methode mit dieser Version:
     update(deltaTime) {
         if (!this.isRunning) return;
 
@@ -428,36 +380,6 @@ export class GameManager {
             }
             return true;
         });
-    }
-
-    // NEUE METHODE: Kollisionserkennung und -auflösung
-    handleCollisions(playerOldPos, carOldPos) {
-        // Entfernen Sie diese Zeilen, um den Kollisions-Delay zu deaktivieren
-        // if (this.collisionDelay > 0) return;
-
-        // Kollisionsbehandlung für Projektile
-        this.handleProjectileCollisions();
-
-        // Kollisionsbehandlung für Spieler zu Fuß - IMMER ausführen, nicht nur außerhalb des Delays
-        if (this.player && !this.player.inVehicle && playerOldPos) {
-            const collided = this.handlePlayerCollisions(playerOldPos);
-            if (collided) {
-                // Debug-Ausgabe für Kollision
-                console.log("Spieler kollidiert mit Gebäude - Position zurückgesetzt");
-                // Entfernen oder reduzieren Sie den Delay auf 1
-                this.collisionDelay = 1;
-            }
-        }
-
-        // Kollisionsbehandlung für Auto
-        if (this.playerCar && carOldPos) {
-            const collided = this.handleCarCollisions(carOldPos);
-            if (collided) {
-                // Debug-Ausgabe für Kollision
-                console.log("Auto kollidiert mit Gebäude - Position zurückgesetzt");
-                this.collisionDelay = 3; // Reduzieren auf einen kleineren Wert
-            }
-        }
     }
 
     handleProjectileCollisions() {
@@ -661,23 +583,14 @@ export class GameManager {
         };
     }
 
-    handleMultiplayerData(data) {
-        if (!data || !data.senderId || data.senderId === this.networkManager.playerName) return;
-
-        const gameData = data.data;
-
-        if (gameData.type === 'player_update') {
-            this.updateRemotePlayer(data.senderId, gameData);
-        }
-    }
-
     updateRemotePlayer(playerId, playerData) {
+        console.log(`Aktualisiere Remote-Spieler ${playerId}:`, playerData);
+
         // Erstelle oder aktualisiere Remote-Spieler
         if (!this.remotePlayers.has(playerId)) {
             // Erstelle neuen Remote-Spieler
             const remotePlayer = new Player({
-                color: 0x00ff00,  // Grüne Farbe für Remote-Spieler
-                isRemotePlayer: true  // Flag für Remote-Spieler
+                color: 0x00ff00  // Grüne Farbe für Remote-Spieler
             });
 
             // Setze eindeutige ID
@@ -708,18 +621,36 @@ export class GameManager {
             remotePlayer.setRotation(playerData.rotation);
         }
 
-        // WICHTIG: Auto-Zustand aktualisieren
-        if (playerData.inVehicle) {
-            // Wenn der Remote-Spieler in einem Fahrzeug ist, machen wir ihn unsichtbar
-            if (remotePlayer.mesh && remotePlayer.mesh.visible) {
-                console.log(`Remote-Spieler ${playerId} wird unsichtbar gesetzt (im Fahrzeug)`);
-                remotePlayer.mesh.visible = false;
-            }
+        // Fahrzeugstatus explizit setzen
+        const wasInVehicle = remotePlayer.inVehicle;
+        if (playerData.inVehicle && this.remoteVehicles.has(playerId)) {
+            remotePlayer.inVehicle = this.remoteVehicles.get(playerId);
         } else {
-            // Spieler sichtbar machen, wenn er nicht in einem Fahrzeug ist
-            if (remotePlayer.mesh && !remotePlayer.mesh.visible) {
-                console.log(`Remote-Spieler ${playerId} wird sichtbar gesetzt (außerhalb Fahrzeug)`);
+            remotePlayer.inVehicle = null;
+        }
+
+        // Sichtbarkeit explizit setzen basierend auf Fahrzeugstatus
+        if (remotePlayer.mesh) {
+            if (playerData.inVehicle) {
+                console.log(`Remote-Spieler ${playerId} im Fahrzeug - unsichtbar setzen`);
+                remotePlayer.mesh.visible = false;
+
+                // Auch alle Kind-Meshes unsichtbar setzen
+                if (remotePlayer.mesh.children) {
+                    remotePlayer.mesh.children.forEach(child => {
+                        child.visible = false;
+                    });
+                }
+            } else {
+                console.log(`Remote-Spieler ${playerId} zu Fuß - sichtbar setzen`);
                 remotePlayer.mesh.visible = true;
+
+                // Auch alle Kind-Meshes sichtbar setzen
+                if (remotePlayer.mesh.children) {
+                    remotePlayer.mesh.children.forEach(child => {
+                        child.visible = true;
+                    });
+                }
             }
         }
 
@@ -777,11 +708,18 @@ export class GameManager {
             const hasDriver = playerData.vehicle.hasDriver;
             if (hasDriver && playerData.inVehicle) {
                 // Der Remote-Spieler sitzt im Auto
-                if (remotePlayer && !remotePlayer.inVehicle) {
+                if (remotePlayer) {
                     // Remote-Spieler ins Auto setzen (ohne die normale Logik auszuführen)
                     remotePlayer.inVehicle = remoteCar;
                     if (remotePlayer.mesh) {
                         remotePlayer.mesh.visible = false;
+
+                        // Auch Kind-Meshes unsichtbar setzen
+                        if (remotePlayer.mesh.children) {
+                            remotePlayer.mesh.children.forEach(child => {
+                                child.visible = false;
+                            });
+                        }
                     }
 
                     // Fahrzeug aktualisieren (ohne die normale Logik auszuführen)
@@ -793,6 +731,13 @@ export class GameManager {
                     remotePlayer.inVehicle = null;
                     if (remotePlayer.mesh) {
                         remotePlayer.mesh.visible = true;
+
+                        // Auch Kind-Meshes sichtbar setzen
+                        if (remotePlayer.mesh.children) {
+                            remotePlayer.mesh.children.forEach(child => {
+                                child.visible = true;
+                            });
+                        }
                     }
                 }
 
@@ -803,6 +748,12 @@ export class GameManager {
 
     sendPlayerUpdate() {
         if (!this.isMultiplayer || !this.player) return;
+
+        // Debug-Status des lokalen Spielers
+        console.log("Lokaler Spieler Status:", {
+            inVehicle: this.player.inVehicle ? true : false,
+            meshVisible: this.player.mesh ? this.player.mesh.visible : 'kein Mesh'
+        });
 
         // Grunddaten des Spielers
         const playerData = {
@@ -840,6 +791,7 @@ export class GameManager {
 
         // Bereite Struktur für Remote-Spieler vor
         this.remotePlayers = new Map();
+        this.remoteVehicles = new Map();
 
         // Registriere Netzwerk-Event-Listener ZUERST, damit wir Weltdaten empfangen können
         this.setupMultiplayerEvents();
@@ -863,7 +815,7 @@ export class GameManager {
         this.startNetworkUpdates();
     }
 
-// Neue Methode: Weltdaten senden (nur Host)
+    // Neue Methode: Weltdaten senden (nur Host)
     sendWorldData() {
         if (!this.isMultiplayer || !this.networkManager.isHost) return;
 
@@ -891,7 +843,7 @@ export class GameManager {
         this.networkManager.sendGameData(worldData);
     }
 
-// Neue Methode: Welt aus empfangenen Daten erstellen (nur Clients)
+    // Neue Methode: Welt aus empfangenen Daten erstellen (nur Clients)
     createWorldFromData(worldData) {
         // Boden und Straßenmarkierungen erstellen
         this.createGround();
@@ -928,7 +880,7 @@ export class GameManager {
         this.hideLoadingMessage();
     }
 
-// Hilfsmethoden für Loading-Message
+    // Hilfsmethoden für Loading-Message
     showLoadingMessage(message) {
         // Erstelle oder aktualisiere eine Loading-Message im UI
         if (!this.loadingMessage) {
@@ -952,6 +904,30 @@ export class GameManager {
         if (this.loadingMessage && this.loadingMessage.parentNode) {
             this.loadingMessage.parentNode.removeChild(this.loadingMessage);
             this.loadingMessage = null;
+        }
+    }
+
+    // Kollisionsbehandlung
+    handleCollisions(playerOldPos, carOldPos) {
+        // Kollisionsbehandlung für Projektile
+        this.handleProjectileCollisions();
+
+        // Kollisionsbehandlung für Spieler zu Fuß
+        if (this.player && !this.player.inVehicle && playerOldPos) {
+            const collided = this.handlePlayerCollisions(playerOldPos);
+            if (collided) {
+                console.log("Spieler kollidiert mit Gebäude - Position zurückgesetzt");
+                this.collisionDelay = 1;
+            }
+        }
+
+        // Kollisionsbehandlung für Auto
+        if (this.playerCar && carOldPos) {
+            const collided = this.handleCarCollisions(carOldPos);
+            if (collided) {
+                console.log("Auto kollidiert mit Gebäude - Position zurückgesetzt");
+                this.collisionDelay = 3;
+            }
         }
     }
 }

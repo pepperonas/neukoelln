@@ -17,12 +17,13 @@ export class Character extends Entity {
         this.debug = options.debug || false;
     }
 
+    // Korrigierte Version:
     update(deltaTime, inputManager) {
         // Basis-Update für alle Charaktere
         super.update(deltaTime);
 
         // Wenn dieser Charakter in einem Fahrzeug ist
-        if (this.inVehicle) {
+        if (this.inVehicle && typeof this.inVehicle === 'object') {
             // Position und Rotation aktualisieren
             this.position.copy(this.inVehicle.position);
             this.rotation = this.inVehicle.rotation;
