@@ -1,0 +1,71 @@
+/* Minimale CSS-Version, um zu prüfen, ob die Styles richtig geladen werden */
+body {
+    background-color: #333;
+    color: white;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+}
+
+#game-container {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background-color: #f0f0f0; /* Heller Hintergrund, um zu sehen, ob der Container überhaupt angezeigt wird */
+}
+
+#loading-screen {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background-color: #880000; /* Auffälliges Rot für Debugging */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    color: white;
+    z-index: 1000;
+}
+
+#menu {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background-color: #000088; /* Auffälliges Blau für Debugging */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 900;
+    color: white;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* Auffällige Buttons für Debugging */
+button {
+    background-color: #ff0000;
+    color: white;
+    padding: 15px 30px;
+    margin: 10px;
+    font-size: 18px;
+    border: none;
+    cursor: pointer;
+    border-radius: 5px;
+}
+
+/* Debug-Info */
+.debug-info {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: #0f0;
+    padding: 10px;
+    font-family: monospace;
+    z-index: 1100;
+    pointer-events: none;
+}

@@ -1,0 +1,32 @@
+{
+  "name": "gta-style-game",
+  "version": "1.0.0",
+  "description": "Ein GTA-ähnliches Spiel mit modernem JavaScript",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "webpack serve --open",
+    "build": "webpack --mode production",
+    "test": "jest"
+  },
+  "keywords": ["game", "threejs", "3d", "gta"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@babel/core": "^7.22.0",
+    "@babel/preset-env": "^7.22.0",
+    "babel-loader": "^9.1.2",
+    "css-loader": "^6.8.1",
+    "file-loader": "^6.2.0",
+    "html-webpack-plugin": "^5.5.1",
+    "style-loader": "^3.3.3",
+    "webpack": "^5.85.0",
+    "webpack-cli": "^5.1.1",
+    "webpack-dev-server": "^4.15.0"
+  },
+  "dependencies": {
+    "cannon-es": "^0.20.0",
+    "howler": "^2.2.3",
+    "three": "^0.153.0",
+    "@tweenjs/tween.js": "^21.0.0"
+  }
+}
