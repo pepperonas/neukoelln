@@ -24,10 +24,15 @@ export class GameManager {
         this.remoteVehicles = new Map();
 
         this.playerScores = new Map(); // Speichert die Anzahl der gewonnenen Runden pro Spieler
+        // Füge lokalen Spieler direkt zum Punktestand hinzu
+        if (this.networkManager && this.networkManager.playerName) {
+            this.playerScores.set(this.networkManager.playerName, 0);
+        }
         this.lastKiller = null; // Speichert den letzten Spieler, der einen tödlichen Treffer erzielt hat
         this.roundActive = true; // Zeigt an, ob die aktuelle Runde aktiv ist
         this.roundRestartDelay = 5; // Verzögerung in Sekunden vor dem Neustart einer Runde
         this.restartCountdown = 0; // Countdown-Zähler für den Neustart
+
 
         window.gameManager = this;
 
@@ -1131,6 +1136,8 @@ export class GameManager {
 
         // Starte regelmäßige Positionsaktualisierungen
         this.startNetworkUpdates();
+
+        this.debugScores();
     }
 
     // Neue Methode: Weltdaten senden (nur Host)
@@ -1253,55 +1260,66 @@ export class GameManager {
     }
 
     handlePlayerDeath(player, killer) {
-        console.log("handlePlayerDeath wurde aufgerufen!");
-        console.log("Player:", player);
-        console.log("Killer:", killer);
+        console.log("handlePlayerDeath wurde aufgerufen!", player, killer);
 
         if (!this.roundActive) {
-            console.log("Die Runde ist bereits inaktiv, ignoriere...");
+            console.log("Runde ist bereits inaktiv, ignoriere...");
             return; // Verhindert doppelte Verarbeitung
         }
 
-        console.log("Setze Runde inaktiv und beginne Neustart-Prozess...");
         this.roundActive = false;
         this.lastKiller = killer;
 
-        // Hier noch ein Test, ob die ID korrekt ist
-        if (killer && killer.id) {
-            console.log("Killer-ID gefunden:", killer.id);
+        // Punkte für den Killer erhöhen, falls vorhanden
+        if (killer) {
+            console.log("Killer gefunden:", killer);
 
-            // Wenn die ID mit "remote_" beginnt, entferne dieses Präfix für den Score
-            const cleanId = killer.id.startsWith('remote_') ? killer.id.substring(7) : killer.id;
-            console.log("Bereinigte Killer-ID für Punktevergabe:", cleanId);
+            // Killer-ID extrahieren und bereinigen
+            let killerId = killer.id;
+            console.log("Original Killer-ID:", killerId);
 
-            const currentScore = this.playerScores.get(cleanId) || 0;
-            this.playerScores.set(cleanId, currentScore + 1);
-            console.log(`Spieler ${cleanId} hat jetzt ${currentScore + 1} Punkte`);
+            // Wenn es eine Remote-ID ist (beginnt mit 'remote_'), extrahiere die Basis-ID
+            let baseKillerId = killerId;
+            if (killerId && killerId.startsWith('remote_')) {
+                baseKillerId = killerId.substring(7);
+                console.log("Bereinigte Killer-ID:", baseKillerId);
+            }
 
-            // Gib den aktuellen Punktestand aller Spieler aus
-            console.log("Aktueller Punktestand:");
-            this.playerScores.forEach((score, id) => {
-                console.log(`- ${id}: ${score}`);
-            });
+            // Prüfe, ob der Killer der lokale Spieler ist
+            const isLocalPlayer = killer === this.player ||
+                (this.networkManager && killerId === this.networkManager.playerName);
+
+            // Wähle die richtige ID für den Punktestand
+            const scoreId = isLocalPlayer ? this.networkManager?.playerName : baseKillerId;
+
+            // Punkte erhöhen
+            if (scoreId) {
+                const currentScore = this.playerScores.get(scoreId) || 0;
+                const newScore = currentScore + 1;
+                this.playerScores.set(scoreId, newScore);
+
+                console.log(`Punkte erhöht für Spieler ${scoreId}: ${currentScore} -> ${newScore}`);
+                console.log("Aktueller Punktestand:", Array.from(this.playerScores.entries()));
+            } else {
+                console.warn("Killer-ID konnte nicht ermittelt werden");
+            }
         } else {
-            console.log("Kein gültiger Killer gefunden oder keine ID vorhanden");
+            console.log("Kein Killer gefunden (Selbstmord oder Umgebungsschaden)");
         }
 
-        console.log("Zeige Todesbildschirm...");
+        // Zeige Todesbildschirm und starte Countdown
         this.showDeathScreen(killer);
-
-        console.log("Starte Countdown für Rundenneustart...");
         this.restartCountdown = this.roundRestartDelay;
         this.startRestartCountdown();
     }
 
     showDeathScreen(killer) {
-        console.log("showDeathScreen wird ausgeführt mit Killer:", killer);
+        console.log("Zeige Todesbildschirm, Killer:", killer);
+        console.log("Aktueller Punktestand (Map):", Array.from(this.playerScores.entries()));
 
-        // Prüfe, ob bereits ein Todesbildschirm existiert
+        // Prüfe ob bereits ein Todesbildschirm existiert
         const existingScreen = document.getElementById('death-screen');
         if (existingScreen) {
-            console.log("Entferne existierenden Todesbildschirm");
             document.body.removeChild(existingScreen);
         }
 
@@ -1323,9 +1341,21 @@ export class GameManager {
 
         // Füge Nachricht hinzu
         const message = document.createElement('h2');
-        message.textContent = killer ?
-            `Du wurdest von ${killer.id} eliminiert!` :
-            'Du wurdest eliminiert!';
+
+        // Killer-Nachricht anzeigen
+        if (killer) {
+            let killerName = killer.id || "Unbekannter Spieler";
+
+            // Entferne 'remote_' Präfix für die Anzeige
+            if (killerName.startsWith('remote_')) {
+                killerName = killerName.substring(7);
+            }
+
+            message.textContent = `Du wurdest von ${killerName} eliminiert!`;
+        } else {
+            message.textContent = 'Du wurdest eliminiert!';
+        }
+
         message.style.marginBottom = '20px';
         deathScreen.appendChild(message);
 
@@ -1342,6 +1372,7 @@ export class GameManager {
         scoreTable.style.padding = '10px';
         scoreTable.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
         scoreTable.style.borderRadius = '5px';
+        scoreTable.style.minWidth = '200px'; // Mindestbreite für bessere Lesbarkeit
 
         const scoreTitle = document.createElement('h3');
         scoreTitle.textContent = 'Punktestand';
@@ -1362,12 +1393,14 @@ export class GameManager {
         playerHeader.textContent = 'Spieler';
         playerHeader.style.padding = '8px';
         playerHeader.style.borderBottom = '1px solid white';
+        playerHeader.style.textAlign = 'left';
         headerRow.appendChild(playerHeader);
 
         const scoreHeader = document.createElement('th');
         scoreHeader.textContent = 'Punkte';
         scoreHeader.style.padding = '8px';
         scoreHeader.style.borderBottom = '1px solid white';
+        scoreHeader.style.textAlign = 'center';
         headerRow.appendChild(scoreHeader);
 
         thead.appendChild(headerRow);
@@ -1375,6 +1408,24 @@ export class GameManager {
 
         // Tabellenkörper
         const tbody = document.createElement('tbody');
+
+        // Alle möglichen IDs für den lokalen Spieler
+        const localPlayerIds = [
+            this.networkManager?.playerName,
+            this.player?.id,
+            `player_${this.networkManager?.playerName}`
+        ].filter(id => id); // Entferne undefined/null Werte
+
+        console.log("Mögliche lokale Spieler-IDs:", localPlayerIds);
+
+        // Suche nach dem höchsten Punktestand für den lokalen Spieler
+        let localPlayerScore = 0;
+        for (const id of localPlayerIds) {
+            const score = this.playerScores.get(id) || 0;
+            if (score > localPlayerScore) {
+                localPlayerScore = score;
+            }
+        }
 
         // Füge lokalen Spieler hinzu
         const localPlayerRow = document.createElement('tr');
@@ -1386,7 +1437,7 @@ export class GameManager {
         localPlayerRow.appendChild(localPlayerCell);
 
         const localScoreCell = document.createElement('td');
-        localScoreCell.textContent = this.playerScores.get(this.player.id) || 0;
+        localScoreCell.textContent = localPlayerScore;
         localScoreCell.style.padding = '8px';
         localScoreCell.style.borderBottom = '1px solid rgba(255,255,255,0.2)';
         localScoreCell.style.textAlign = 'center';
@@ -1395,17 +1446,43 @@ export class GameManager {
         tbody.appendChild(localPlayerRow);
 
         // Füge alle anderen Spieler hinzu
+        const processedRemotePlayers = new Set(); // Um Duplikate zu vermeiden
+
         this.remotePlayers.forEach((player, playerId) => {
+            // Entferne 'remote_' Präfix
+            const normalizedId = playerId.startsWith('remote_') ? playerId.substring(7) : playerId;
+
+            // Überspringen, wenn wir diesen Spieler bereits verarbeitet haben
+            if (processedRemotePlayers.has(normalizedId)) return;
+            processedRemotePlayers.add(normalizedId);
+
+            console.log(`Füge Remote-Spieler hinzu: ${playerId} (normalisiert: ${normalizedId})`);
+
             const playerRow = document.createElement('tr');
 
             const playerCell = document.createElement('td');
-            playerCell.textContent = playerId;
+            playerCell.textContent = normalizedId;
             playerCell.style.padding = '8px';
             playerCell.style.borderBottom = '1px solid rgba(255,255,255,0.2)';
             playerRow.appendChild(playerCell);
 
+            // Alle möglichen ID-Versionen überprüfen
+            const remoteIdVariants = [
+                normalizedId,
+                `remote_${normalizedId}`,
+                playerId
+            ];
+
+            let remoteScore = 0;
+            for (const id of remoteIdVariants) {
+                const score = this.playerScores.get(id) || 0;
+                if (score > remoteScore) {
+                    remoteScore = score;
+                }
+            }
+
             const scoreCell = document.createElement('td');
-            scoreCell.textContent = this.playerScores.get(playerId) || 0;
+            scoreCell.textContent = remoteScore;
             scoreCell.style.padding = '8px';
             scoreCell.style.borderBottom = '1px solid rgba(255,255,255,0.2)';
             scoreCell.style.textAlign = 'center';
@@ -1420,11 +1497,9 @@ export class GameManager {
 
         // Zum Dokument hinzufügen
         document.body.appendChild(deathScreen);
-
         console.log("Todesbildschirm wurde zum DOM hinzugefügt");
     }
 
-// 6. Methode für den Countdown vor Rundenneustart
     startRestartCountdown() {
         console.log("startRestartCountdown wird ausgeführt, Verzögerung:", this.roundRestartDelay);
 
@@ -1556,5 +1631,22 @@ export class GameManager {
         };
 
         this.networkManager.sendGameData(restartData);
+    }
+
+    debugScores() {
+        console.log("========== PUNKTESTAND DEBUGGING ==========");
+        console.log("playerScores Map:", this.playerScores);
+        console.log("Einträge:");
+
+        this.playerScores.forEach((score, id) => {
+            console.log(`- ${id}: ${score}`);
+        });
+
+        console.log("Lokaler Spieler:", this.networkManager?.playerName);
+        console.log("Remote Spieler:");
+        this.remotePlayers.forEach((player, id) => {
+            console.log(`- ${id} (bereinigte ID: ${id.startsWith('remote_') ? id.substring(7) : id})`);
+        });
+        console.log("==========================================");
     }
 }
