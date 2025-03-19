@@ -5,6 +5,7 @@ import {Car} from '../entities/vehicles/car.js';
 import {Building} from '../entities/environment/building.js';
 import {Player} from '../entities/characters/player.js';
 import {NetworkManager} from '../network/networkManager.js';
+import {Projectile} from '../entities/weapons/projectile.js';
 
 export class GameManager {
     constructor(engine) {
@@ -62,6 +63,9 @@ export class GameManager {
         // Start the engine
         this.engine.start();
 
+        // Health-UI anzeigen
+        this.showHealthUI();
+
         if (this.debug) {
             console.log("Spiel gestartet!");
             console.log("Spieler:", this.player);
@@ -112,6 +116,117 @@ export class GameManager {
         this.player = null;
         this.playerCar = null;
         this.projectiles = [];
+    }
+
+    showHealthUI() {
+        // Falls der Gesundheitsbalken schon existiert, aktualisiere ihn nur
+        if (this.healthUI) {
+            this.updateHealthUI();
+            return;
+        }
+
+        // Container für UI erstellen
+        this.healthUI = document.createElement('div');
+        this.healthUI.style.position = 'fixed';
+        this.healthUI.style.bottom = '20px';
+        this.healthUI.style.left = '20px';
+        this.healthUI.style.width = '200px';
+        this.healthUI.style.height = '30px';
+        this.healthUI.style.backgroundColor = '#333';
+        this.healthUI.style.border = '2px solid #666';
+        this.healthUI.style.borderRadius = '5px';
+        this.healthUI.style.overflow = 'hidden';
+        this.healthUI.style.zIndex = '1000';
+
+        // Gesundheitsbalken erstellen
+        this.healthBar = document.createElement('div');
+        this.healthBar.style.height = '100%';
+        this.healthBar.style.backgroundColor = '#4CAF50'; // Grün
+        this.healthBar.style.width = '100%';
+        this.healthBar.style.transition = 'width 0.3s, background-color 0.3s';
+
+        // HP-Text erstellen
+        this.healthText = document.createElement('div');
+        this.healthText.style.position = 'absolute';
+        this.healthText.style.top = '0';
+        this.healthText.style.left = '0';
+        this.healthText.style.width = '100%';
+        this.healthText.style.height = '100%';
+        this.healthText.style.display = 'flex';
+        this.healthText.style.justifyContent = 'center';
+        this.healthText.style.alignItems = 'center';
+        this.healthText.style.color = 'white';
+        this.healthText.style.fontFamily = 'Arial, sans-serif';
+        this.healthText.style.fontWeight = 'bold';
+        this.healthText.style.textShadow = '1px 1px 2px #000';
+
+        // UI zusammenbauen und zum Dokument hinzufügen
+        this.healthUI.appendChild(this.healthBar);
+        this.healthUI.appendChild(this.healthText);
+        document.body.appendChild(this.healthUI);
+
+        // Initialen Zustand setzen
+        this.updateHealthUI();
+    }
+
+    updateHealthUI() {
+        if (!this.healthUI || !this.player) return;
+
+        const healthPercent = Math.max(0, Math.min(100, (this.player.health / this.player.maxHealth) * 100));
+        this.healthBar.style.width = `${healthPercent}%`;
+        this.healthText.textContent = `HP: ${Math.floor(this.player.health)} / ${this.player.maxHealth}`;
+
+        // Farbe je nach Gesundheitszustand ändern
+        if (healthPercent > 60) {
+            this.healthBar.style.backgroundColor = '#4CAF50'; // Grün
+        } else if (healthPercent > 30) {
+            this.healthBar.style.backgroundColor = '#FFC107'; // Gelb
+        } else {
+            this.healthBar.style.backgroundColor = '#F44336'; // Rot
+        }
+    }
+
+    showDamageIndicator(damage) {
+        // Erstelle ein fliegendes Schadenslabel
+        const damageIndicator = document.createElement('div');
+        damageIndicator.textContent = `-${damage}`;
+        damageIndicator.style.position = 'fixed';
+        damageIndicator.style.color = 'red';
+        damageIndicator.style.fontWeight = 'bold';
+        damageIndicator.style.fontSize = '24px';
+        damageIndicator.style.textShadow = '2px 2px 4px #000';
+        damageIndicator.style.zIndex = '1001';
+
+        // Positioniere es zufällig über dem Spielbereich
+        const centerX = window.innerWidth / 2;
+        const centerY = window.innerHeight / 2;
+        damageIndicator.style.left = `${centerX + (Math.random() * 100 - 50)}px`;
+        damageIndicator.style.top = `${centerY + (Math.random() * 100 - 50)}px`;
+
+        // Füge es zum Dokument hinzu
+        document.body.appendChild(damageIndicator);
+
+        // Animation
+        let opacity = 1;
+        let posY = parseInt(damageIndicator.style.top);
+
+        const animInterval = setInterval(() => {
+            opacity -= 0.05;
+            posY -= 2;
+
+            damageIndicator.style.opacity = opacity;
+            damageIndicator.style.top = `${posY}px`;
+
+            if (opacity <= 0) {
+                clearInterval(animInterval);
+                if (damageIndicator.parentNode) {
+                    damageIndicator.parentNode.removeChild(damageIndicator);
+                }
+            }
+        }, 50);
+
+        // Aktualisiere die Health-Anzeige
+        this.updateHealthUI();
     }
 
     createGround() {
@@ -305,6 +420,10 @@ export class GameManager {
         // Projektile aktualisieren und aufräumen
         this.updateProjectiles();
 
+        if (this.player) {
+            this.updateHealthUI();
+        }
+
         // Reduziere Kollisions-Delay
         if (this.collisionDelay > 0) {
             this.collisionDelay--;
@@ -361,6 +480,28 @@ export class GameManager {
                 if (projectile) {
                     // Füge Projektil zum EntityManager hinzu
                     this.projectiles.push(this.entityManager.add(projectile));
+
+                    // Im Multiplayer-Modus: Teile anderen Spielern mit, dass du geschossen hast
+                    if (this.isMultiplayer) {
+                        const projectileData = {
+                            type: 'player_shoot',
+                            position: {
+                                x: projectile.position.x,
+                                y: projectile.position.y,
+                                z: projectile.position.z
+                            },
+                            direction: {
+                                x: projectile.direction.x,
+                                y: projectile.direction.y,
+                                z: projectile.direction.z
+                            },
+                            speed: projectile.speed,
+                            damage: projectile.damage
+                        };
+
+                        console.log("Sende Schussdaten:", projectileData);
+                        this.networkManager.sendGameData(projectileData);
+                    }
                 }
             }
 
@@ -368,6 +509,50 @@ export class GameManager {
         } else if (!spacePressed) {
             // Leertaste wurde losgelassen
             this.keyStatus.SPACE = false;
+        }
+    }
+
+    createRemoteProjectile(playerId, projectileData) {
+        console.log(`Erstelle Remote-Projektil für Spieler ${playerId}:`, projectileData);
+
+        // Finde den Remote-Spieler
+        if (!this.remotePlayers.has(playerId)) {
+            console.warn(`Kann Projektil nicht erstellen: Remote-Spieler ${playerId} nicht gefunden`);
+            return;
+        }
+
+        const remotePlayer = this.remotePlayers.get(playerId);
+
+        try {
+            // Erstelle ein neues Projektil
+            const position = new THREE.Vector3(
+                projectileData.position.x,
+                projectileData.position.y,
+                projectileData.position.z
+            );
+
+            const direction = new THREE.Vector3(
+                projectileData.direction.x,
+                projectileData.direction.y,
+                projectileData.direction.z
+            );
+
+            const projectile = new Projectile({
+                position: position,
+                direction: direction,
+                speed: projectileData.speed || 0.5,
+                damage: projectileData.damage || 10,
+                lifeTime: 1.5,
+                owner: remotePlayer
+            });
+
+            // Füge Projektil zum EntityManager hinzu
+            const addedProjectile = this.entityManager.add(projectile);
+            this.projectiles.push(addedProjectile);
+
+            console.log(`Remote-Projektil erfolgreich erstellt und hinzugefügt`);
+        } catch (error) {
+            console.error("Fehler beim Erstellen des Remote-Projektils:", error);
         }
     }
 
@@ -391,7 +576,7 @@ export class GameManager {
 
             // Prüfe Kollision mit Gebäuden
             for (const building of this.buildings) {
-                if (!building || !building.mesh) continue;
+                if (!building || !building.mesh || !building.isActive) continue;
 
                 const buildingBox = new THREE.Box3().setFromObject(building.mesh);
 
@@ -402,19 +587,102 @@ export class GameManager {
                 }
             }
 
-            // Prüfe Kollision mit Fahrzeug, wenn Projektil nicht vom Fahrzeug kommt
-            if (projectile.isActive && this.playerCar && this.playerCar.mesh &&
-                projectile.owner !== this.playerCar) {
+            // Wenn das Projektil nicht mehr aktiv ist, überspringe den Rest
+            if (!projectile.isActive) return;
 
+            // Berechne zufälligen Schaden zwischen 15 und 35 HP
+            const randomDamage = Math.floor(Math.random() * 21) + 15; // 21 = (35-15+1)
+
+            // Prüfe Kollision mit Remote-Spielern
+            this.remotePlayers.forEach((remotePlayer, playerId) => {
+                if (!remotePlayer.mesh || !remotePlayer.isActive || projectile.owner === remotePlayer) return;
+
+                // Erstelle eine vergrößerte BoundingBox für bessere Treffergenauigkeit
+                const remotePlayerBox = new THREE.Box3().setFromObject(remotePlayer.mesh);
+                // Erweitere die Box um 0.5 Einheiten in jede Richtung
+                remotePlayerBox.min.x -= 0.5;
+                remotePlayerBox.min.y -= 0.5;
+                remotePlayerBox.min.z -= 0.5;
+                remotePlayerBox.max.x += 0.5;
+                remotePlayerBox.max.y += 0.5;
+                remotePlayerBox.max.z += 0.5;
+
+                if (remotePlayerBox.intersectsBox(projectileBox)) {
+                    projectile.isActive = false;
+
+                    // Schaden an den getroffenen Spieler senden
+                    this.sendDamageEvent(playerId, randomDamage);
+
+                    console.log(`Remote-Spieler ${playerId} wurde getroffen! Schaden: ${randomDamage}`);
+                    return;
+                }
+            });
+
+            // Prüfe Kollision mit lokalem Spieler
+            if (this.player && this.player.mesh && projectile.owner !== this.player && this.player.isActive) {
+                // Erstelle eine vergrößerte BoundingBox für bessere Treffergenauigkeit
+                const playerBox = new THREE.Box3().setFromObject(this.player.mesh);
+                // Erweitere die Box um 0.5 Einheiten in jede Richtung
+                playerBox.min.x -= 0.5;
+                playerBox.min.y -= 0.5;
+                playerBox.min.z -= 0.5;
+                playerBox.max.x += 0.5;
+                playerBox.max.y += 0.5;
+                playerBox.max.z += 0.5;
+
+                if (playerBox.intersectsBox(projectileBox)) {
+                    // Treffer! Schaden am Spieler verursachen
+                    this.player.damage(randomDamage);
+                    projectile.isActive = false;
+                    this.showDamageIndicator(randomDamage);
+                    this.updateHealthUI();
+                    console.log(`Lokaler Spieler wurde getroffen! Schaden: ${randomDamage}, verbleibende Gesundheit: ${this.player.health}`);
+                    return;
+                }
+            }
+
+            // Prüfe Kollision mit lokalem Fahrzeug, wenn Projektil nicht vom Fahrzeug kommt
+            if (this.playerCar && this.playerCar.mesh && projectile.owner !== this.playerCar && this.playerCar.isActive) {
                 const carBox = new THREE.Box3().setFromObject(this.playerCar.mesh);
 
                 if (carBox.intersectsBox(projectileBox)) {
-                    this.playerCar.damage(projectile.damage);
+                    this.playerCar.damage(randomDamage);
                     projectile.isActive = false;
-                    if (this.debug) console.log("Projektil trifft Auto");
+                    console.log("Projektil trifft lokales Auto, Schaden:", randomDamage);
+                    return;
                 }
             }
+
+            // Prüfe Kollision mit Remote-Fahrzeugen
+            this.remoteVehicles.forEach((remoteCar, playerId) => {
+                if (!remoteCar.mesh || !remoteCar.isActive || projectile.owner === remoteCar) return;
+
+                const remoteCarBox = new THREE.Box3().setFromObject(remoteCar.mesh);
+
+                if (remoteCarBox.intersectsBox(projectileBox)) {
+                    projectile.isActive = false;
+
+                    // Schaden am Fahrzeug senden
+                    this.sendVehicleDamageEvent(playerId, randomDamage);
+
+                    console.log(`Remote-Fahrzeug ${playerId} wurde getroffen! Schaden: ${randomDamage}`);
+                    return;
+                }
+            });
         });
+    }
+
+    sendVehicleDamageEvent(targetId, damage) {
+        if (!this.isMultiplayer) return;
+
+        const damageData = {
+            type: 'vehicle_damage',
+            targetId: targetId,
+            damage: damage
+        };
+
+        console.log(`Sende Fahrzeugschadensdaten an Spieler ${targetId}:`, damageData);
+        this.networkManager.sendGameData(damageData);
     }
 
     handlePlayerCollisions(oldPos) {
@@ -453,6 +721,19 @@ export class GameManager {
         }
 
         return false;
+    }
+
+    sendDamageEvent(targetId, damage) {
+        if (!this.isMultiplayer) return;
+
+        const damageData = {
+            type: 'player_damage',
+            targetId: targetId,
+            damage: damage
+        };
+
+        console.log(`Sende Schadensdaten an Spieler ${targetId}:`, damageData);
+        this.networkManager.sendGameData(damageData);
     }
 
     handleCarCollisions(oldPos) {
@@ -570,7 +851,6 @@ export class GameManager {
 
             // Ignoriere deine eigenen Updates
             if (data.senderId === this.networkManager.playerName) {
-                console.log("Eigene Update-Nachricht ignoriert");
                 return;
             }
 
@@ -582,6 +862,26 @@ export class GameManager {
                 this.createWorldFromData(gameData);
             } else if (gameData.type === 'player_update') {
                 this.updateRemotePlayer(data.senderId, gameData);
+            } else if (gameData.type === 'player_shoot') {
+                this.createRemoteProjectile(data.senderId, gameData);
+            } else if (gameData.type === 'player_damage') {
+                // Prüfe, ob ich das Ziel bin
+                if (gameData.targetId === this.networkManager.playerName) {
+                    console.log(`Ich (${this.networkManager.playerName}) wurde getroffen! Schaden: ${gameData.damage}`);
+                    this.player.damage(gameData.damage);
+                    if (typeof this.showDamageIndicator === 'function') {
+                        this.showDamageIndicator(gameData.damage);
+                    }
+                    if (typeof this.updateHealthUI === 'function') {
+                        this.updateHealthUI();
+                    }
+                }
+            } else if (gameData.type === 'vehicle_damage') {
+                // Prüfe, ob mein Fahrzeug das Ziel ist
+                if (gameData.targetId === this.networkManager.playerName && this.playerCar) {
+                    console.log(`Mein Fahrzeug wurde getroffen! Schaden: ${gameData.damage}`);
+                    this.playerCar.damage(gameData.damage);
+                }
             }
         };
     }
@@ -879,6 +1179,9 @@ export class GameManager {
         // Spiel starten
         this.isRunning = true;
         this.engine.start();
+
+        // Health-UI anzeigen (WICHTIG: Auch für Clients!)
+        this.showHealthUI();
 
         // Loading-Message entfernen
         this.hideLoadingMessage();

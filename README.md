@@ -51,3 +51,10 @@ sudo systemctl restart nginx
 cd /var/www/html/
 npm start -- --host 0.0.0.0 --port 8080
 ```
+
+### Multiplayer Server starten
+
+```sh
+cd /var/www/gta-multiplayer-server/
+node server.js
+```
