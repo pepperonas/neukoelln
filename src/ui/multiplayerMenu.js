@@ -364,19 +364,35 @@ export class MultiplayerMenu {
     }
 
     updatePlayerList(players) {
+        // Leere zunächst die bestehende Spielerliste
         this.playerList.innerHTML = '';
         this.playerListContainer.classList.remove('hidden');
 
-        players.forEach(player => {
-            const item = document.createElement('li');
-            item.textContent = player.username;
+        console.log("Aktualisiere Spielerliste mit Daten:", players);
 
+        // Spieler-Informationen anzeigen
+        players.forEach(player => {
+            // Prüfen ob Spieler gültig ist
+            if (!player || (!player.id && !player.name && !player.username)) {
+                console.warn("Ungültiger Spielerdatensatz:", player);
+                return;
+            }
+
+            // Bestimme den Anzeigenamen (unterstützt verschiedene API-Formate)
+            const displayName = player.name || player.username || player.id || "Unbekannter Spieler";
+
+            const item = document.createElement('li');
+            item.textContent = displayName;
+
+            // Host-Status hervorheben
             if (player.isHost) {
                 item.classList.add('host');
                 item.textContent += ' (Host)';
             }
 
             this.playerList.appendChild(item);
+
+            console.log(`Spieler zur Liste hinzugefügt: ${displayName}, Host: ${player.isHost ? 'Ja' : 'Nein'}`);
         });
     }
 

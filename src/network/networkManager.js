@@ -21,6 +21,9 @@ export class NetworkManager {
         this.onGameStart = null;
         this.onGameData = null;
         this.onError = null;
+
+        // Neuer Callback für Spielerlisten-Updates
+        this.onPlayerListUpdate = null;
     }
 
     // Verbindung zum Server herstellen
@@ -121,24 +124,48 @@ export class NetworkManager {
     handleRoomCreated(data) {
         this.roomCode = data.roomCode;
         this.isHost = true;
-        this.players = data.players;
+
+        // Stelle sicher, dass players ein Array ist
+        if (data.players && Array.isArray(data.players)) {
+            this.players = this.formatPlayerData(data.players);
+        } else {
+            console.warn("Erhaltene Spielerdaten sind kein Array:", data.players);
+            this.players = [];
+        }
 
         console.log(`Raum erstellt mit Code: ${this.roomCode}`);
+        console.log("Spieler im Raum:", this.players);
 
+        // Rufe den Callback auf
         if (this.onRoomCreated) {
             this.onRoomCreated({
                 roomCode: this.roomCode,
                 players: this.players
             });
         }
+
+        // Informiere auch über die aktualisierte Spielerliste
+        if (this.onPlayerListUpdate) {
+            this.onPlayerListUpdate(this.players);
+        }
     }
 
     handleRoomJoined(data) {
         this.roomCode = data.roomCode;
-        this.isHost = data.players.find(p => p.id === this.playerName)?.isHost || false;
-        this.players = data.players;
+
+        // Finde heraus, ob ich Host bin
+        if (data.players && Array.isArray(data.players)) {
+            this.players = this.formatPlayerData(data.players);
+            this.isHost = this.players.find(p => p.id === this.playerName)?.isHost || false;
+        } else {
+            console.warn("Erhaltene Spielerdaten sind kein Array:", data.players);
+            this.players = [];
+            this.isHost = false;
+        }
 
         console.log(`Raum beigetreten: ${this.roomCode}`);
+        console.log("Bin ich Host?", this.isHost);
+        console.log("Spieler im Raum:", this.players);
 
         if (this.onRoomJoined) {
             this.onRoomJoined({
@@ -146,12 +173,38 @@ export class NetworkManager {
                 players: this.players
             });
         }
+
+        // Informiere auch über die aktualisierte Spielerliste
+        if (this.onPlayerListUpdate) {
+            this.onPlayerListUpdate(this.players);
+        }
     }
 
     handlePlayerJoined(data) {
-        this.players = data.players;
+        // Stelle sicher, dass die Spielerdaten korrekt sind
+        if (data.player) {
+            // Füge den neuen Spieler der Spielerliste hinzu
+            const formattedPlayer = this.formatSinglePlayerData(data.player);
 
-        console.log(`Spieler ${data.player.name} ist beigetreten`);
+            // Suche nach einem vorhandenen Spieler mit derselben ID
+            const existingIndex = this.players.findIndex(p => p.id === formattedPlayer.id);
+
+            if (existingIndex >= 0) {
+                // Aktualisiere vorhandenen Spieler
+                this.players[existingIndex] = formattedPlayer;
+            } else {
+                // Füge neuen Spieler hinzu
+                this.players.push(formattedPlayer);
+            }
+        }
+
+        // Verwende die komplette Spielerliste, falls vorhanden
+        if (data.players && Array.isArray(data.players)) {
+            this.players = this.formatPlayerData(data.players);
+        }
+
+        console.log(`Spieler ${data.player?.name || data.player?.id} ist beigetreten`);
+        console.log("Aktualisierte Spielerliste:", this.players);
 
         if (this.onPlayerJoined) {
             this.onPlayerJoined({
@@ -159,18 +212,38 @@ export class NetworkManager {
                 players: this.players
             });
         }
+
+        // Informiere auch über die aktualisierte Spielerliste
+        if (this.onPlayerListUpdate) {
+            this.onPlayerListUpdate(this.players);
+        }
     }
 
     handlePlayerLeft(data) {
-        this.players = data.players;
+        // Entferne den Spieler aus der Spielerliste
+        const playerIndex = this.players.findIndex(p => p.id === data.playerId);
+        if (playerIndex >= 0) {
+            this.players.splice(playerIndex, 1);
+        }
+
+        // Verwende die komplette Spielerliste, falls vorhanden
+        if (data.players && Array.isArray(data.players)) {
+            this.players = this.formatPlayerData(data.players);
+        }
 
         console.log(`Spieler ${data.playerId} hat den Raum verlassen`);
+        console.log("Aktualisierte Spielerliste:", this.players);
 
         if (this.onPlayerLeft) {
             this.onPlayerLeft({
                 playerId: data.playerId,
                 players: this.players
             });
+        }
+
+        // Informiere auch über die aktualisierte Spielerliste
+        if (this.onPlayerListUpdate) {
+            this.onPlayerListUpdate(this.players);
         }
 
         // Prüfe, ob ich jetzt Host bin (erster in der Liste)
@@ -190,15 +263,7 @@ export class NetworkManager {
         }
     }
 
-    // Im NetworkManager
     handleGameData(data) {
-        console.log(`Daten von ${data.senderId} empfangen:`, JSON.stringify(data.gameData));
-
-        // Wichtig: Spieler-ID-Check, aber nicht blockieren
-        if (data.senderId === this.playerName) {
-            console.log("Eigene Nachricht empfangen - wird ignoriert");
-        }
-
         if (this.onGameData) {
             this.onGameData({
                 senderId: data.senderId,
@@ -207,13 +272,33 @@ export class NetworkManager {
         }
     }
 
-
     handleServerError(data) {
         console.error('Server-Fehler:', data.message);
 
         if (this.onError) {
             this.onError({message: data.message});
         }
+    }
+
+    // Hilfsmethode zum Formatieren der Spielerdaten
+    formatPlayerData(players) {
+        if (!Array.isArray(players)) {
+            console.error("formatPlayerData: players ist kein Array:", players);
+            return [];
+        }
+
+        return players.map(player => this.formatSinglePlayerData(player));
+    }
+
+    // Formatiert einzelne Spielerdaten
+    formatSinglePlayerData(player) {
+        if (!player) return null;
+
+        return {
+            id: player.id || player.playerId || player.playerName || player.name,
+            name: player.name || player.playerName || player.id || "Unbekannter Spieler",
+            isHost: !!player.isHost
+        };
     }
 
     // Sendet eine Nachricht an den Server
