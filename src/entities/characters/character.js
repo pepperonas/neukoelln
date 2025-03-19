@@ -98,13 +98,14 @@ export class Character extends Entity {
         }
     }
 
-    die() {
+    die(killer = null) {
         this.isActive = false;
 
-        if (this.debug) {
-            console.log("Character stirbt");
+        // Informieren Sie den GameManager über den Tod mit Angabe des Killers
+        if (window.gameManager) {
+            window.gameManager.handlePlayerDeath(this, killer);
         }
 
-        // In Unterklassen überschreiben für spezifisches Verhalten
+        if (this.debug) console.log("Spieler ist gestorben, getötet von:", killer ? killer.id : "unbekannt");
     }
 }

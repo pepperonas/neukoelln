@@ -23,6 +23,14 @@ export class GameManager {
         this.remotePlayers = new Map();
         this.remoteVehicles = new Map();
 
+        this.playerScores = new Map(); // Speichert die Anzahl der gewonnenen Runden pro Spieler
+        this.lastKiller = null; // Speichert den letzten Spieler, der einen tödlichen Treffer erzielt hat
+        this.roundActive = true; // Zeigt an, ob die aktuelle Runde aktiv ist
+        this.roundRestartDelay = 5; // Verzögerung in Sekunden vor dem Neustart einer Runde
+        this.restartCountdown = 0; // Countdown-Zähler für den Neustart
+
+        window.gameManager = this;
+
         // Tasten-Status-Tracking
         this.keyStatus = {
             E: false,
@@ -633,8 +641,8 @@ export class GameManager {
                 playerBox.max.z += 0.5;
 
                 if (playerBox.intersectsBox(projectileBox)) {
-                    // Treffer! Schaden am Spieler verursachen
-                    this.player.damage(randomDamage);
+                    // Treffer! Schaden am Spieler verursachen mit Angabe des Schützen als Quelle
+                    this.player.damage(randomDamage, projectile.owner);
                     projectile.isActive = false;
                     this.showDamageIndicator(randomDamage);
                     this.updateHealthUI();
@@ -884,6 +892,10 @@ export class GameManager {
                     console.log(`Mein Fahrzeug wurde getroffen! Schaden: ${gameData.damage}`);
                     this.playerCar.damage(gameData.damage);
                 }
+            } else if (gameData.type === 'game_restart') {
+                // NEUER HANDLER: Spielneustart
+                console.log("Neustart-Event empfangen von Spieler:", data.senderId);
+                this.handleRemoteRestart();
             }
         };
     }
@@ -1238,5 +1250,311 @@ export class GameManager {
                 this.collisionDelay = 3;
             }
         }
+    }
+
+    handlePlayerDeath(player, killer) {
+        console.log("handlePlayerDeath wurde aufgerufen!");
+        console.log("Player:", player);
+        console.log("Killer:", killer);
+
+        if (!this.roundActive) {
+            console.log("Die Runde ist bereits inaktiv, ignoriere...");
+            return; // Verhindert doppelte Verarbeitung
+        }
+
+        console.log("Setze Runde inaktiv und beginne Neustart-Prozess...");
+        this.roundActive = false;
+        this.lastKiller = killer;
+
+        // Hier noch ein Test, ob die ID korrekt ist
+        if (killer && killer.id) {
+            console.log("Killer-ID gefunden:", killer.id);
+
+            // Wenn die ID mit "remote_" beginnt, entferne dieses Präfix für den Score
+            const cleanId = killer.id.startsWith('remote_') ? killer.id.substring(7) : killer.id;
+            console.log("Bereinigte Killer-ID für Punktevergabe:", cleanId);
+
+            const currentScore = this.playerScores.get(cleanId) || 0;
+            this.playerScores.set(cleanId, currentScore + 1);
+            console.log(`Spieler ${cleanId} hat jetzt ${currentScore + 1} Punkte`);
+
+            // Gib den aktuellen Punktestand aller Spieler aus
+            console.log("Aktueller Punktestand:");
+            this.playerScores.forEach((score, id) => {
+                console.log(`- ${id}: ${score}`);
+            });
+        } else {
+            console.log("Kein gültiger Killer gefunden oder keine ID vorhanden");
+        }
+
+        console.log("Zeige Todesbildschirm...");
+        this.showDeathScreen(killer);
+
+        console.log("Starte Countdown für Rundenneustart...");
+        this.restartCountdown = this.roundRestartDelay;
+        this.startRestartCountdown();
+    }
+
+    showDeathScreen(killer) {
+        console.log("showDeathScreen wird ausgeführt mit Killer:", killer);
+
+        // Prüfe, ob bereits ein Todesbildschirm existiert
+        const existingScreen = document.getElementById('death-screen');
+        if (existingScreen) {
+            console.log("Entferne existierenden Todesbildschirm");
+            document.body.removeChild(existingScreen);
+        }
+
+        // Erstelle UI-Element für den Todesbildschirm
+        const deathScreen = document.createElement('div');
+        deathScreen.id = 'death-screen';
+        deathScreen.style.position = 'fixed';
+        deathScreen.style.top = '0';
+        deathScreen.style.left = '0';
+        deathScreen.style.width = '100%';
+        deathScreen.style.height = '100%';
+        deathScreen.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+        deathScreen.style.color = 'white';
+        deathScreen.style.display = 'flex';
+        deathScreen.style.flexDirection = 'column';
+        deathScreen.style.justifyContent = 'center';
+        deathScreen.style.alignItems = 'center';
+        deathScreen.style.zIndex = '1000';
+
+        // Füge Nachricht hinzu
+        const message = document.createElement('h2');
+        message.textContent = killer ?
+            `Du wurdest von ${killer.id} eliminiert!` :
+            'Du wurdest eliminiert!';
+        message.style.marginBottom = '20px';
+        deathScreen.appendChild(message);
+
+        // Füge Countdown hinzu
+        const countdown = document.createElement('div');
+        countdown.id = 'restart-countdown';
+        countdown.textContent = `Neustart in ${this.roundRestartDelay} Sekunden`;
+        countdown.style.fontSize = '24px';
+        deathScreen.appendChild(countdown);
+
+        // Füge Tabelle mit Punkteständen hinzu
+        const scoreTable = document.createElement('div');
+        scoreTable.style.marginTop = '40px';
+        scoreTable.style.padding = '10px';
+        scoreTable.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+        scoreTable.style.borderRadius = '5px';
+
+        const scoreTitle = document.createElement('h3');
+        scoreTitle.textContent = 'Punktestand';
+        scoreTitle.style.textAlign = 'center';
+        scoreTitle.style.marginBottom = '10px';
+        scoreTable.appendChild(scoreTitle);
+
+        // Erstelle die Tabelle mit den Punkten
+        const table = document.createElement('table');
+        table.style.borderCollapse = 'collapse';
+        table.style.width = '100%';
+
+        // Header
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+
+        const playerHeader = document.createElement('th');
+        playerHeader.textContent = 'Spieler';
+        playerHeader.style.padding = '8px';
+        playerHeader.style.borderBottom = '1px solid white';
+        headerRow.appendChild(playerHeader);
+
+        const scoreHeader = document.createElement('th');
+        scoreHeader.textContent = 'Punkte';
+        scoreHeader.style.padding = '8px';
+        scoreHeader.style.borderBottom = '1px solid white';
+        headerRow.appendChild(scoreHeader);
+
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        // Tabellenkörper
+        const tbody = document.createElement('tbody');
+
+        // Füge lokalen Spieler hinzu
+        const localPlayerRow = document.createElement('tr');
+
+        const localPlayerCell = document.createElement('td');
+        localPlayerCell.textContent = 'Du';
+        localPlayerCell.style.padding = '8px';
+        localPlayerCell.style.borderBottom = '1px solid rgba(255,255,255,0.2)';
+        localPlayerRow.appendChild(localPlayerCell);
+
+        const localScoreCell = document.createElement('td');
+        localScoreCell.textContent = this.playerScores.get(this.player.id) || 0;
+        localScoreCell.style.padding = '8px';
+        localScoreCell.style.borderBottom = '1px solid rgba(255,255,255,0.2)';
+        localScoreCell.style.textAlign = 'center';
+        localPlayerRow.appendChild(localScoreCell);
+
+        tbody.appendChild(localPlayerRow);
+
+        // Füge alle anderen Spieler hinzu
+        this.remotePlayers.forEach((player, playerId) => {
+            const playerRow = document.createElement('tr');
+
+            const playerCell = document.createElement('td');
+            playerCell.textContent = playerId;
+            playerCell.style.padding = '8px';
+            playerCell.style.borderBottom = '1px solid rgba(255,255,255,0.2)';
+            playerRow.appendChild(playerCell);
+
+            const scoreCell = document.createElement('td');
+            scoreCell.textContent = this.playerScores.get(playerId) || 0;
+            scoreCell.style.padding = '8px';
+            scoreCell.style.borderBottom = '1px solid rgba(255,255,255,0.2)';
+            scoreCell.style.textAlign = 'center';
+            playerRow.appendChild(scoreCell);
+
+            tbody.appendChild(playerRow);
+        });
+
+        table.appendChild(tbody);
+        scoreTable.appendChild(table);
+        deathScreen.appendChild(scoreTable);
+
+        // Zum Dokument hinzufügen
+        document.body.appendChild(deathScreen);
+
+        console.log("Todesbildschirm wurde zum DOM hinzugefügt");
+    }
+
+// 6. Methode für den Countdown vor Rundenneustart
+    startRestartCountdown() {
+        console.log("startRestartCountdown wird ausgeführt, Verzögerung:", this.roundRestartDelay);
+
+        // Wenn es bereits einen Timer gibt, beende diesen zuerst
+        if (this.countdownTimer) {
+            console.log("Beende existierenden Countdown-Timer");
+            clearInterval(this.countdownTimer);
+        }
+
+        // Pausiere das Spiel während des Countdowns
+        console.log("Pausiere das Spiel für den Countdown");
+        this.pauseGame();
+
+        console.log("Starte neuen Countdown-Timer");
+        this.countdownTimer = setInterval(() => {
+            this.restartCountdown--;
+            console.log("Countdown:", this.restartCountdown);
+
+            // Aktualisiere die Countdown-Anzeige
+            const countdownElement = document.getElementById('restart-countdown');
+            if (countdownElement) {
+                countdownElement.textContent = `Neustart in ${this.restartCountdown} Sekunden`;
+            } else {
+                console.warn("Countdown-Element nicht gefunden!");
+            }
+
+            // Wenn der Countdown abgelaufen ist, starte eine neue Runde
+            if (this.restartCountdown <= 0) {
+                console.log("Countdown abgelaufen, starte Runde neu");
+                clearInterval(this.countdownTimer);
+                this.countdownTimer = null;
+                this.restartRound();
+            }
+        }, 1000);
+
+        console.log("Countdown-Timer wurde gestartet");
+    }
+
+    restartRound() {
+        console.log("Runde wird neu gestartet...");
+
+        // Entferne den Todesbildschirm
+        const deathScreen = document.getElementById('death-screen');
+        if (deathScreen) {
+            document.body.removeChild(deathScreen);
+        }
+
+        // Setze Spieler zurück
+        this.resetPlayer();
+
+        // Setze Fahrzeuge zurück
+        this.resetVehicles();
+
+        // Entferne alle Projektile
+        this.projectiles.forEach(projectile => {
+            this.entityManager.remove(projectile);
+        });
+        this.projectiles = [];
+
+        // Aktiviere die Runde
+        this.roundActive = true;
+
+        // Im Multiplayer-Modus: Informiere andere Spieler über den Neustart
+        if (this.isMultiplayer) {
+            this.sendRestartEvent();
+        }
+
+        // Starte das Spiel wieder
+        this.resumeGame();
+
+        console.log("Runde wurde neu gestartet!");
+    }
+
+// 8. Methode zum Zurücksetzen des Spielers
+    resetPlayer() {
+        if (!this.player) return;
+
+        // Setze Spieler-Position zurück
+        const startPosition = this.getPlayerStartPosition();
+        this.player.setPosition(startPosition.x, startPosition.y, startPosition.z);
+
+        // Setze Gesundheit zurück
+        this.player.health = this.player.maxHealth;
+
+        // Stelle sicher, dass der Spieler nicht mehr im Fahrzeug ist
+        if (this.player.inVehicle) {
+            this.player.exitVehicle();
+        }
+
+        // Aktiviere den Spieler wieder
+        this.player.isActive = true;
+
+        // Aktualisiere die Health-UI
+        this.updateHealthUI();
+    }
+
+// 9. Methode zum Zurücksetzen der Fahrzeuge
+    resetVehicles() {
+        if (this.playerCar) {
+            // Setze Auto-Position zurück
+            const carPosition = this.getCarStartPosition();
+            this.playerCar.setPosition(carPosition.x, carPosition.y, carPosition.z);
+
+            // Setze Rotation zurück
+            this.playerCar.rotation = 0;
+            this.playerCar.speed = 0;
+
+            // Setze Haltbarkeit zurück
+            this.playerCar.durability = this.playerCar.maxDurability;
+        }
+
+        // Zurücksetzen von Remote-Fahrzeugen im Multiplayer-Modus
+        if (this.isMultiplayer) {
+            this.remoteVehicles.forEach(vehicle => {
+                vehicle.isActive = true;
+                // Weitere Zurücksetzungen für Remote-Fahrzeuge
+            });
+        }
+    }
+
+    sendRestartEvent() {
+        if (!this.isMultiplayer) return;
+
+        console.log("Sende Neustart-Event an alle Spieler");
+
+        const restartData = {
+            type: 'game_restart',
+            timestamp: Date.now()
+        };
+
+        this.networkManager.sendGameData(restartData);
     }
 }
