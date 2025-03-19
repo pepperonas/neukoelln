@@ -33,6 +33,8 @@ export class GameManager {
         this.roundRestartDelay = 5; // Verzögerung in Sekunden vor dem Neustart einer Runde
         this.restartCountdown = 0; // Countdown-Zähler für den Neustart
 
+        // Tastenbindungen für Scoreboard einrichten
+        this.setupScoreboardHotkey();
 
         window.gameManager = this;
 
@@ -78,6 +80,9 @@ export class GameManager {
 
         // Health-UI anzeigen
         this.showHealthUI();
+
+        // Punkteanzeige initialisieren
+        this.showScoreUI();
 
         if (this.debug) {
             console.log("Spiel gestartet!");
@@ -433,10 +438,17 @@ export class GameManager {
         // Projektile aktualisieren und aufräumen
         this.updateProjectiles();
 
+        // Hier ist ein direkter Aufruf von handleProjectileCollisions
         this.handleProjectileCollisions();
 
         if (this.player) {
             this.updateHealthUI();
+        }
+
+        // Aktualisiere die Score-UI (alle 2 Sekunden)
+        if (!this.lastScoreUpdate || (Date.now() - this.lastScoreUpdate) > 2000) {
+            this.updateScoreUI();
+            this.lastScoreUpdate = Date.now();
         }
 
         // Reduziere Kollisions-Delay
@@ -583,8 +595,14 @@ export class GameManager {
     }
 
     handleProjectileCollisions() {
+        // Tracking für Projektile, die bereits in diesem Frame verarbeitet wurden
+        const processedProjectiles = new Set();
+
         this.projectiles.forEach(projectile => {
             if (!projectile || !projectile.isActive || !projectile.mesh) return;
+
+            // Überprüfe, ob dieses Projektil bereits in diesem Frame verarbeitet wurde
+            if (processedProjectiles.has(projectile.id)) return;
 
             // Projektil-Bounding Box
             const projectileBox = new THREE.Box3().setFromObject(projectile.mesh);
@@ -596,6 +614,7 @@ export class GameManager {
                 const buildingBox = new THREE.Box3().setFromObject(building.mesh);
 
                 if (buildingBox.intersectsBox(projectileBox)) {
+                    processedProjectiles.add(projectile.id);
                     projectile.isActive = false;
                     if (this.debug) console.log("Projektil trifft Gebäude");
                     break;
@@ -623,6 +642,7 @@ export class GameManager {
                 remotePlayerBox.max.z += 0.5;
 
                 if (remotePlayerBox.intersectsBox(projectileBox)) {
+                    processedProjectiles.add(projectile.id);
                     projectile.isActive = false;
 
                     // Schaden an den getroffenen Spieler senden
@@ -646,11 +666,21 @@ export class GameManager {
                 playerBox.max.z += 0.5;
 
                 if (playerBox.intersectsBox(projectileBox)) {
+                    // Markiere dieses Projektil als verarbeitet
+                    processedProjectiles.add(projectile.id);
+
                     // Treffer! Schaden am Spieler verursachen mit Angabe des Schützen als Quelle
                     this.player.damage(randomDamage, projectile.owner);
                     projectile.isActive = false;
                     this.showDamageIndicator(randomDamage);
                     this.updateHealthUI();
+
+                    // Treffer-Anzeige für den Schützen (im Multiplayer)
+                    if (projectile.owner && this.isMultiplayer) {
+                        this.sendHitConfirmation(projectile.owner);
+                        this.showHitIndicator(this.player);
+                    }
+
                     console.log(`Lokaler Spieler wurde getroffen! Schaden: ${randomDamage}, verbleibende Gesundheit: ${this.player.health}`);
                     return;
                 }
@@ -661,6 +691,7 @@ export class GameManager {
                 const carBox = new THREE.Box3().setFromObject(this.playerCar.mesh);
 
                 if (carBox.intersectsBox(projectileBox)) {
+                    processedProjectiles.add(projectile.id);
                     this.playerCar.damage(randomDamage);
                     projectile.isActive = false;
                     console.log("Projektil trifft lokales Auto, Schaden:", randomDamage);
@@ -675,6 +706,7 @@ export class GameManager {
                 const remoteCarBox = new THREE.Box3().setFromObject(remoteCar.mesh);
 
                 if (remoteCarBox.intersectsBox(projectileBox)) {
+                    processedProjectiles.add(projectile.id);
                     projectile.isActive = false;
 
                     // Schaden am Fahrzeug senden
@@ -685,6 +717,80 @@ export class GameManager {
                 }
             });
         });
+    }
+
+    showHitIndicator(hitPlayer) {
+        // Erstelle ein fliegendes Trefferlabel
+        const hitIndicator = document.createElement('div');
+        hitIndicator.textContent = `✓ Treffer!`;
+        hitIndicator.style.position = 'fixed';
+        hitIndicator.style.color = '#00ff00'; // Grün für Treffer
+        hitIndicator.style.fontWeight = 'bold';
+        hitIndicator.style.fontSize = '24px';
+        hitIndicator.style.textShadow = '2px 2px 4px #000';
+        hitIndicator.style.zIndex = '1001';
+
+        // Positioniere es in der Mitte des Bildschirms
+        const centerX = window.innerWidth / 2;
+        const centerY = window.innerHeight / 2;
+        hitIndicator.style.left = `${centerX - 50 + (Math.random() * 100 - 50)}px`;
+        hitIndicator.style.top = `${centerY - 50 + (Math.random() * 100 - 50)}px`;
+
+        // Füge es zum Dokument hinzu
+        document.body.appendChild(hitIndicator);
+
+        // Animation
+        let opacity = 1;
+        let posY = parseInt(hitIndicator.style.top);
+
+        const animInterval = setInterval(() => {
+            opacity -= 0.05;
+            posY -= 2;
+
+            hitIndicator.style.opacity = opacity;
+            hitIndicator.style.top = `${posY}px`;
+
+            if (opacity <= 0) {
+                clearInterval(animInterval);
+                if (hitIndicator.parentNode) {
+                    hitIndicator.parentNode.removeChild(hitIndicator);
+                }
+            }
+        }, 50);
+    }
+
+    sendScoreUpdate(playerId, score) {
+        if (!this.isMultiplayer) return;
+
+        const scoreData = {
+            type: 'score_update',
+            playerId: playerId,
+            score: score
+        };
+
+        console.log(`Sende Punktestand-Update für ${playerId}: ${score}`);
+        this.networkManager.sendGameData(scoreData);
+    }
+
+    sendHitConfirmation(shooter) {
+        if (!this.isMultiplayer) return;
+
+        // Ermittle die ID des Schützen
+        let shooterId = null;
+        if (shooter.id) {
+            shooterId = shooter.id.startsWith('remote_') ? shooter.id.substring(7) : shooter.id;
+        }
+
+        if (!shooterId) return;
+
+        const hitData = {
+            type: 'hit_confirmation',
+            targetId: this.networkManager.playerName, // Ich wurde getroffen
+            // Keine Schadensinformation in der Bestätigung
+        };
+
+        console.log(`Sende Trefferbestätigung an Schützen ${shooterId}`);
+        this.networkManager.sendGameData(hitData);
     }
 
     sendVehicleDamageEvent(targetId, damage) {
@@ -901,8 +1007,91 @@ export class GameManager {
                 // NEUER HANDLER: Spielneustart
                 console.log("Neustart-Event empfangen von Spieler:", data.senderId);
                 this.handleRemoteRestart();
+            } else if (gameData.type === 'hit_confirmation') {
+                // Zeige Treffermeldung ohne Schaden an
+                console.log("Trefferbestätigung erhalten von:", data.senderId);
+
+                // Finde den getroffenen Spieler in unseren Remote-Spielern
+                const targetId = gameData.targetId;
+                const remotePlayerId = `remote_${targetId}`;
+
+                if (this.remotePlayers.has(remotePlayerId)) {
+                    const remotePlayer = this.remotePlayers.get(remotePlayerId);
+                    this.showHitIndicator(remotePlayer);
+                } else {
+                    // Fallback, wenn wir den Spieler nicht finden können
+                    this.showHitIndicator({id: targetId});
+                }
+            } else if (gameData.type === 'score_update') {
+                const playerId = gameData.playerId;
+                const score = gameData.score;
+
+                console.log(`Punktestand-Update empfangen für ${playerId}: ${score}`);
+
+                // Punktestand aktualisieren
+                this.playerScores.set(playerId, score);
+
+                // UI aktualisieren
+                this.updateScoreUI();
             }
         };
+    }
+
+    handleRemoteRestart() {
+        console.log("Starte lokales Spiel neu aufgrund eines Remote-Neustarts");
+
+        // Entferne bestehenden Todesbildschirm, falls vorhanden
+        const deathScreen = document.getElementById('death-screen');
+        if (deathScreen) {
+            document.body.removeChild(deathScreen);
+        }
+
+        // Breche laufenden Countdown ab
+        if (this.countdownTimer) {
+            clearInterval(this.countdownTimer);
+            this.countdownTimer = null;
+        }
+
+        // Setze Spieler zurück
+        this.resetPlayer();
+
+        // Setze Fahrzeuge zurück
+        this.resetVehicles();
+
+        // Stelle sicher, dass alle Remote-Spieler sichtbar sind
+        this.remotePlayers.forEach((remotePlayer, playerId) => {
+            if (remotePlayer.mesh) {
+                remotePlayer.mesh.visible = true;
+
+                // Auch alle Kind-Meshes sichtbar machen
+                if (remotePlayer.mesh.children) {
+                    remotePlayer.mesh.children.forEach(child => {
+                        child.visible = true;
+                    });
+                }
+
+                console.log(`Remote-Spieler ${playerId} nach Neustart wieder sichtbar gemacht`);
+            }
+
+            // Aktiviere den Spieler wieder
+            remotePlayer.isActive = true;
+        });
+
+        // Entferne alle Projektile
+        this.projectiles.forEach(projectile => {
+            this.entityManager.remove(projectile);
+        });
+        this.projectiles = [];
+
+        // Aktiviere die Runde
+        this.roundActive = true;
+
+        // Starte das Spiel wieder, falls es pausiert war
+        if (!this.isRunning) {
+            this.resumeGame();
+        }
+
+        console.log("Lokales Spiel wurde nach Remote-Neustart neu gestartet");
     }
 
     updateRemotePlayer(playerId, playerData) {
@@ -1278,36 +1467,28 @@ export class GameManager {
             let killerId = killer.id;
             console.log("Original Killer-ID:", killerId);
 
-            // Wenn es eine Remote-ID ist (beginnt mit 'remote_'), extrahiere die Basis-ID
-            let baseKillerId = killerId;
+            // Wenn es eine Remote-ID ist (beginnt mit 'remote_'), entferne das Präfix
             if (killerId && killerId.startsWith('remote_')) {
-                baseKillerId = killerId.substring(7);
-                console.log("Bereinigte Killer-ID:", baseKillerId);
+                killerId = killerId.substring(7);
+                console.log("Bereinigte Killer-ID:", killerId);
             }
 
-            // Prüfe, ob der Killer der lokale Spieler ist
-            const isLocalPlayer = killer === this.player ||
-                (this.networkManager && killerId === this.networkManager.playerName);
-
-            // Wähle die richtige ID für den Punktestand
-            const scoreId = isLocalPlayer ? this.networkManager?.playerName : baseKillerId;
-
-            // Punkte erhöhen
-            if (scoreId) {
-                const currentScore = this.playerScores.get(scoreId) || 0;
+            // Speichere Punkte mit der bereinigten ID
+            if (killerId) {
+                const currentScore = this.playerScores.get(killerId) || 0;
                 const newScore = currentScore + 1;
-                this.playerScores.set(scoreId, newScore);
+                this.playerScores.set(killerId, newScore);
 
-                console.log(`Punkte erhöht für Spieler ${scoreId}: ${currentScore} -> ${newScore}`);
-                console.log("Aktueller Punktestand:", Array.from(this.playerScores.entries()));
-            } else {
-                console.warn("Killer-ID konnte nicht ermittelt werden");
+                console.log(`Punkte erhöht für Spieler ${killerId}: ${currentScore} -> ${newScore}`);
+
+                // Beim Multiplayer: Sende Punktestand an alle
+                if (this.isMultiplayer) {
+                    this.sendScoreUpdate(killerId, newScore);
+                }
             }
-        } else {
-            console.log("Kein Killer gefunden (Selbstmord oder Umgebungsschaden)");
         }
 
-        // Zeige Todesbildschirm und starte Countdown
+        // Fortsetzen wie bisher...
         this.showDeathScreen(killer);
         this.restartCountdown = this.roundRestartDelay;
         this.startRestartCountdown();
@@ -1631,6 +1812,246 @@ export class GameManager {
         };
 
         this.networkManager.sendGameData(restartData);
+    }
+
+    showScoreUI() {
+        // Falls die Scoreboard-Anzeige schon existiert, aktualisiere sie nur
+        if (this.scoreUI) {
+            this.updateScoreUI();
+            return;
+        }
+
+        // Container für UI erstellen
+        this.scoreUI = document.createElement('div');
+        this.scoreUI.id = 'score-ui';
+        this.scoreUI.style.position = 'fixed';
+        this.scoreUI.style.top = '20px';
+        this.scoreUI.style.right = '20px';
+        this.scoreUI.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+        this.scoreUI.style.color = 'white';
+        this.scoreUI.style.padding = '10px';
+        this.scoreUI.style.borderRadius = '5px';
+        this.scoreUI.style.minWidth = '150px';
+        this.scoreUI.style.zIndex = '1000';
+        this.scoreUI.style.fontFamily = 'Arial, sans-serif';
+        this.scoreUI.style.fontSize = '14px';
+        this.scoreUI.style.boxShadow = '0 0 10px rgba(0,0,0,0.5)';
+
+        // Titel
+        const title = document.createElement('div');
+        title.textContent = 'Punktestand';
+        title.style.fontWeight = 'bold';
+        title.style.marginBottom = '5px';
+        title.style.textAlign = 'center';
+        title.style.borderBottom = '1px solid rgba(255,255,255,0.3)';
+        title.style.paddingBottom = '5px';
+        this.scoreUI.appendChild(title);
+
+        // Spielerliste erstellen
+        this.scoreList = document.createElement('div');
+        this.scoreUI.appendChild(this.scoreList);
+
+        // Zum Dokument hinzufügen
+        document.body.appendChild(this.scoreUI);
+
+        // Initialen Zustand setzen
+        this.updateScoreUI();
+
+        console.log("Score UI erstellt und angezeigt");
+    }
+
+// 1. Verbesserte showScoreUI Methode - kein Ausblenden mehr bei Tab-Taste
+    showScoreUI() {
+        // Falls die Scoreboard-Anzeige schon existiert, aktualisiere sie nur
+        if (this.scoreUI) {
+            this.updateScoreUI();
+            return;
+        }
+
+        // Container für UI erstellen
+        this.scoreUI = document.createElement('div');
+        this.scoreUI.id = 'score-ui';
+        this.scoreUI.style.position = 'fixed';
+        this.scoreUI.style.top = '20px';
+        this.scoreUI.style.right = '20px';
+        this.scoreUI.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+        this.scoreUI.style.color = 'white';
+        this.scoreUI.style.padding = '10px';
+        this.scoreUI.style.borderRadius = '5px';
+        this.scoreUI.style.minWidth = '150px';
+        this.scoreUI.style.zIndex = '1000';
+        this.scoreUI.style.fontFamily = 'Arial, sans-serif';
+        this.scoreUI.style.fontSize = '14px';
+        this.scoreUI.style.boxShadow = '0 0 10px rgba(0,0,0,0.5)';
+
+        // Titel
+        const title = document.createElement('div');
+        title.textContent = 'Punktestand';
+        title.style.fontWeight = 'bold';
+        title.style.marginBottom = '5px';
+        title.style.textAlign = 'center';
+        title.style.borderBottom = '1px solid rgba(255,255,255,0.3)';
+        title.style.paddingBottom = '5px';
+        this.scoreUI.appendChild(title);
+
+        // Spielerliste erstellen
+        this.scoreList = document.createElement('div');
+        this.scoreUI.appendChild(this.scoreList);
+
+        // Zum Dokument hinzufügen
+        document.body.appendChild(this.scoreUI);
+
+        // Initialen Zustand setzen
+        this.updateScoreUI();
+
+        console.log("Score UI erstellt und angezeigt");
+    }
+
+// 2. Verbesserte updateScoreUI Methode mit robusterer ID-Behandlung
+    updateScoreUI() {
+        if (!this.scoreUI || !this.scoreList) {
+            console.log("Score UI nicht gefunden, erstelle neu");
+            this.showScoreUI();
+            return;
+        }
+
+        console.log("Aktualisiere Score UI");
+
+        // Aktueller Punktestand zur Debug-Ausgabe
+        console.log("Aktueller Punktestand:", Array.from(this.playerScores.entries()));
+
+        // Leere die aktuelle Liste
+        this.scoreList.innerHTML = '';
+
+        // Scoreboard-Daten sammeln
+        const scoreData = [];
+
+        // Lokalen Spieler hinzufügen
+        const localIds = [
+            this.networkManager?.playerName,
+            this.player?.id,
+            `player_${this.networkManager?.playerName || ''}`
+        ].filter(id => id); // Entferne undefined/null Werte
+
+        console.log("Mögliche lokale IDs:", localIds);
+
+        let localScore = 0;
+        for (const id of localIds) {
+            const score = this.playerScores.get(id) || 0;
+            if (score > localScore) {
+                localScore = score;
+            }
+        }
+
+        scoreData.push({
+            id: localIds[0] || 'local',
+            name: 'Du',
+            score: localScore,
+            isLocal: true
+        });
+
+        // Remote-Spieler hinzufügen (mit mehreren ID-Überprüfungen)
+        const processedPlayerIds = new Set();
+
+        this.remotePlayers.forEach((player, playerId) => {
+            const baseId = playerId.startsWith('remote_') ? playerId.substring(7) : playerId;
+
+            // Überspringen, wenn dieser Spieler bereits verarbeitet wurde
+            if (processedPlayerIds.has(baseId)) return;
+            processedPlayerIds.add(baseId);
+
+            // Alle möglichen ID-Varianten für diesen Spieler
+            const idVariants = [
+                baseId,
+                `remote_${baseId}`,
+                playerId,
+                `player_${baseId}`
+            ];
+
+            console.log(`Remote-Spieler ${playerId}, Varianten:`, idVariants);
+
+            // Höchste Punktzahl für diesen Spieler finden
+            let highestScore = 0;
+            for (const id of idVariants) {
+                const score = this.playerScores.get(id) || 0;
+                if (score > highestScore) {
+                    highestScore = score;
+                }
+            }
+
+            scoreData.push({
+                id: baseId,
+                name: baseId,
+                score: highestScore,
+                isLocal: false
+            });
+        });
+
+        // Sortiere nach Punktzahl (höchste zuerst)
+        scoreData.sort((a, b) => b.score - a.score);
+
+        console.log("Sortierte Scoredata:", scoreData);
+
+        // Erstelle Einträge
+        scoreData.forEach((player, index) => {
+            const entry = document.createElement('div');
+            entry.style.display = 'flex';
+            entry.style.justifyContent = 'space-between';
+            entry.style.padding = '3px 0';
+
+            // Abwechselnde Hintergrundfarben für bessere Lesbarkeit
+            if (index % 2 === 1) {
+                entry.style.backgroundColor = 'rgba(255,255,255,0.05)';
+            }
+
+            // Hervorhebung für lokalen Spieler
+            if (player.isLocal) {
+                entry.style.fontWeight = 'bold';
+                entry.style.color = '#ffcc00'; // Gold-Farbe für lokalen Spieler
+            }
+
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = player.name;
+
+            const scoreSpan = document.createElement('span');
+            scoreSpan.textContent = player.score;
+            scoreSpan.style.marginLeft = '15px';
+
+            entry.appendChild(nameSpan);
+            entry.appendChild(scoreSpan);
+
+            this.scoreList.appendChild(entry);
+        });
+    }
+
+    toggleScoreUI() {
+        if (this.scoreUI) {
+            if (this.scoreUI.style.display === 'none') {
+                this.scoreUI.style.display = 'block';
+                this.updateScoreUI(); // Aktualisieren beim Wiedereinblenden
+            } else {
+                this.scoreUI.style.display = 'none';
+            }
+        } else {
+            this.showScoreUI();
+        }
+    }
+
+    setupScoreboardHotkey() {
+        // Listener für die Taste "Tab" zum Ein-/Ausblenden der Punkteanzeige
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Tab') {
+                e.preventDefault(); // Verhindere Standard-Tab-Verhalten
+                this.toggleScoreUI();
+            }
+        });
+
+        // Beim Loslassen der Tab-Taste das Scoreboard ausblenden
+        window.addEventListener('keyup', (e) => {
+            if (e.code === 'Tab' && this.scoreUI && this.scoreUI.style.display !== 'none') {
+                this.scoreUI.style.display = 'none';
+            }
+        });
     }
 
     debugScores() {

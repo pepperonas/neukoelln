@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Entity } from '../entity.js';
+import {Entity} from '../entity.js';
 
 export class Projectile extends Entity {
     constructor(options = {}) {
@@ -26,7 +26,7 @@ export class Projectile extends Entity {
     createProjectileMesh() {
         // Einfaches Kugel-Mesh für das Projektil
         const geometry = new THREE.SphereGeometry(0.1, 8, 8);
-        const material = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+        const material = new THREE.MeshBasicMaterial({color: 0xffff00});
         this.mesh = new THREE.Mesh(geometry, material);
         this.mesh.position.copy(this.position);
 
@@ -53,9 +53,9 @@ export class Projectile extends Entity {
 
     onCollision(otherEntity) {
         // Verursache Schaden, wenn das Projektil mit einer Entität kollidiert, die nicht der Besitzer ist
-        if (otherEntity !== this.owner && typeof otherEntity.damage === 'function') {
-            otherEntity.damage(this.damage);
-        }
+        // if (otherEntity !== this.owner && typeof otherEntity.damage === 'function') {
+        //     otherEntity.damage(this.damage);
+        // }
 
         // Deaktiviere Projektil nach Treffer
         this.isActive = false;
