@@ -420,6 +420,8 @@ export class GameManager {
         // Projektile aktualisieren und aufräumen
         this.updateProjectiles();
 
+        this.handleProjectileCollisions();
+
         if (this.player) {
             this.updateHealthUI();
         }

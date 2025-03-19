@@ -238,20 +238,24 @@ export class Player extends Character {
     }
 
     damage(amount) {
+        console.log(`Player.damage aufgerufen mit Betrag: ${amount}, Gesundheit vorher: ${this.health}`);
+
+        // Stellen Sie sicher, dass amount eine Zahl ist
+        amount = Number(amount);
+        if (isNaN(amount)) {
+            console.error("Ungültiger Schadenswert:", amount);
+            return;
+        }
+
         this.health -= amount;
+        console.log(`Gesundheit nach Abzug: ${this.health}`);
 
         if (this.health <= 0) {
             this.health = 0;
             this.die();
+            console.log("Spieler ist gestorben!");
         }
 
         if (this.debug) console.log("Spieler nimmt Schaden:", amount, "Verbleibende Gesundheit:", this.health);
-    }
-
-    die() {
-        if (this.debug) console.log("Spieler ist gestorben!");
-
-        // Hier kann später Respawn-Logik hinzugefügt werden
-        this.isActive = false;
     }
 }
