@@ -53,9 +53,9 @@ export class Projectile extends Entity {
 
     onCollision(otherEntity) {
         // Verursache Schaden, wenn das Projektil mit einer Entität kollidiert, die nicht der Besitzer ist
-        // if (otherEntity !== this.owner && typeof otherEntity.damage === 'function') {
-        //     otherEntity.damage(this.damage);
-        // }
+        if (otherEntity !== this.owner && typeof otherEntity.damage === 'function') {
+            otherEntity.damage(this.damage);
+        }
 
         // Deaktiviere Projektil nach Treffer
         this.isActive = false;

@@ -238,11 +238,18 @@ export class Player extends Character {
     }
 
     damage(amount, source = null) {
+        // HINZUFÜGEN: Schutzzeit nach Schaden
+        if (this.lastDamageTime && (performance.now() - this.lastDamageTime) < 100) {
+            console.log("Spieler hat kürzlich Schaden erhalten, ignoriere weiteren Schaden");
+            return; // Zu schnell aufeinanderfolgenden Schaden ignorieren
+        }
+
+        this.lastDamageTime = performance.now();
         this.health -= amount;
 
         if (this.health <= 0) {
             this.health = 0;
-            this.die(source); // Übergeben Sie die Quelle des tödlichen Schadens
+            this.die(source);
         }
 
         if (this.debug) console.log("Spieler nimmt Schaden:", amount, "Verbleibende Gesundheit:", this.health);

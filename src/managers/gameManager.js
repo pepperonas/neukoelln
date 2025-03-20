@@ -33,6 +33,12 @@ export class GameManager {
         this.roundRestartDelay = 5; // Verzögerung in Sekunden vor dem Neustart einer Runde
         this.restartCountdown = 0; // Countdown-Zähler für den Neustart
 
+        // NEUE EIGENSCHAFTEN FÜR DIE DOPPELTREFFER-LÖSUNG
+        this.hitProjectiles = new Set();       // Speichert IDs der Projektile, die bereits getroffen haben
+        this.playerImmunityFrames = 0;         // Aktuelle Immunität in Frames
+        this.playerImmunityDuration = 3;       // Dauer der Immunität nach Treffer
+        this.frameCount = 0;                   // Frame-Zähler für periodisches Aufräumen
+
         // Tastenbindungen für Scoreboard einrichten
         this.setupScoreboardHotkey();
 
@@ -52,6 +58,22 @@ export class GameManager {
 
         // Set up the update method
         this.engine.update = (deltaTime) => this.update(deltaTime);
+    }
+
+    safeRemoveProjectile(projectile) {
+        if (!projectile) return;
+
+        // Deaktiviere Projektil
+        projectile.isActive = false;
+
+        // Aus EntityManager entfernen
+        this.entityManager.remove(projectile);
+
+        // Aus Projektil-Array entfernen
+        const index = this.projectiles.indexOf(projectile);
+        if (index !== -1) {
+            this.projectiles.splice(index, 1);
+        }
     }
 
     startGame() {
@@ -385,6 +407,11 @@ export class GameManager {
     update(deltaTime) {
         if (!this.isRunning) return;
 
+        // Alle 60 Frames das hitProjectiles-Set leeren
+        if (this.frameCount % 60 === 0) {
+            this.hitProjectiles.clear();
+        }
+
         // Speichere alte Positionen für Kollisionsrücksetzen
         let playerOldPos = null;
         let carOldPos = null;
@@ -595,13 +622,25 @@ export class GameManager {
     }
 
     handleProjectileCollisions() {
+        // Verarbeite Spieler-Immunität
+        if (this.playerImmunityFrames > 0) {
+            this.playerImmunityFrames--;
+        }
+
         // Tracking für Projektile, die bereits in diesem Frame verarbeitet wurden
         const processedProjectiles = new Set();
 
         this.projectiles.forEach(projectile => {
             if (!projectile || !projectile.isActive || !projectile.mesh) return;
 
-            // Überprüfe, ob dieses Projektil bereits in diesem Frame verarbeitet wurde
+            // SICHERHEIT 1: Überprüfe, ob dieses Projektil bereits einen Treffer verursacht hat
+            if (this.hitProjectiles.has(projectile.id)) {
+                // Dieses Projektil hat bereits getroffen, entferne es sofort
+                this.safeRemoveProjectile(projectile);
+                return;
+            }
+
+            // SICHERHEIT 2: Überprüfe, ob dieses Projektil bereits in diesem Frame verarbeitet wurde
             if (processedProjectiles.has(projectile.id)) return;
 
             // Projektil-Bounding Box
@@ -614,10 +653,15 @@ export class GameManager {
                 const buildingBox = new THREE.Box3().setFromObject(building.mesh);
 
                 if (buildingBox.intersectsBox(projectileBox)) {
+                    // Markiere Projektil als getroffen
+                    this.hitProjectiles.add(projectile.id);
                     processedProjectiles.add(projectile.id);
-                    projectile.isActive = false;
+
+                    // Entferne Projektil sicher
+                    this.safeRemoveProjectile(projectile);
+
                     if (this.debug) console.log("Projektil trifft Gebäude");
-                    break;
+                    return; // Früher Rücksprung nach Kollision
                 }
             }
 
@@ -625,7 +669,7 @@ export class GameManager {
             if (!projectile.isActive) return;
 
             // Berechne zufälligen Schaden zwischen 15 und 35 HP
-            const randomDamage = Math.floor(Math.random() * 21) + 15; // 21 = (35-15+1)
+            const randomDamage = Math.floor(Math.random() * 21) + 15;
 
             // Prüfe Kollision mit Remote-Spielern
             this.remotePlayers.forEach((remotePlayer, playerId) => {
@@ -642,19 +686,31 @@ export class GameManager {
                 remotePlayerBox.max.z += 0.5;
 
                 if (remotePlayerBox.intersectsBox(projectileBox)) {
+                    // Markiere Projektil als getroffen
+                    this.hitProjectiles.add(projectile.id);
                     processedProjectiles.add(projectile.id);
-                    projectile.isActive = false;
+
+                    // Entferne Projektil sicher
+                    this.safeRemoveProjectile(projectile);
 
                     // Schaden an den getroffenen Spieler senden
                     this.sendDamageEvent(playerId, randomDamage);
 
                     console.log(`Remote-Spieler ${playerId} wurde getroffen! Schaden: ${randomDamage}`);
-                    return;
+                    return; // Früher Rücksprung nach Kollision
                 }
             });
 
+            // Wenn das Projektil nicht mehr aktiv ist, überspringe den Rest
+            if (!projectile.isActive) return;
+
             // Prüfe Kollision mit lokalem Spieler
             if (this.player && this.player.mesh && projectile.owner !== this.player && this.player.isActive) {
+                // SICHERHEIT 3: Überprüfe, ob der Spieler gerade immun ist
+                if (this.playerImmunityFrames > 0) {
+                    return; // Spieler ist immun, keine Kollisionsprüfung
+                }
+
                 // Erstelle eine vergrößerte BoundingBox für bessere Treffergenauigkeit
                 const playerBox = new THREE.Box3().setFromObject(this.player.mesh);
                 // Erweitere die Box um 0.5 Einheiten in jede Richtung
@@ -666,38 +722,57 @@ export class GameManager {
                 playerBox.max.z += 0.5;
 
                 if (playerBox.intersectsBox(projectileBox)) {
-                    // Markiere dieses Projektil als verarbeitet
+                    // Markiere Projektil als getroffen
+                    this.hitProjectiles.add(projectile.id);
                     processedProjectiles.add(projectile.id);
+
+                    // Setze Immunität für einige Frames
+                    this.playerImmunityFrames = this.playerImmunityDuration;
 
                     // Treffer! Schaden am Spieler verursachen mit Angabe des Schützen als Quelle
                     this.player.damage(randomDamage, projectile.owner);
-                    projectile.isActive = false;
+
+                    // Entferne Projektil sicher
+                    this.safeRemoveProjectile(projectile);
+
+                    // Beim getroffenen Spieler nur die Schadensanzeige zeigen, nicht das Treffer-Label
                     this.showDamageIndicator(randomDamage);
                     this.updateHealthUI();
 
-                    // Treffer-Anzeige für den Schützen (im Multiplayer)
+                    // Nur die Bestätigung an den Schützen senden, KEINE lokale Trefferanzeige
                     if (projectile.owner && this.isMultiplayer) {
                         this.sendHitConfirmation(projectile.owner);
-                        this.showHitIndicator(this.player);
+                        // ENTFERNT: this.showHitIndicator(this.player);
                     }
 
                     console.log(`Lokaler Spieler wurde getroffen! Schaden: ${randomDamage}, verbleibende Gesundheit: ${this.player.health}`);
-                    return;
+                    return; // Früher Rücksprung nach Kollision
                 }
             }
 
-            // Prüfe Kollision mit lokalem Fahrzeug, wenn Projektil nicht vom Fahrzeug kommt
+            // Wenn das Projektil nicht mehr aktiv ist, überspringe den Rest
+            if (!projectile.isActive) return;
+
+            // Prüfe Kollision mit lokalem Fahrzeug
             if (this.playerCar && this.playerCar.mesh && projectile.owner !== this.playerCar && this.playerCar.isActive) {
                 const carBox = new THREE.Box3().setFromObject(this.playerCar.mesh);
 
                 if (carBox.intersectsBox(projectileBox)) {
+                    // Markiere Projektil als getroffen
+                    this.hitProjectiles.add(projectile.id);
                     processedProjectiles.add(projectile.id);
+
+                    // Entferne Projektil sicher
+                    this.safeRemoveProjectile(projectile);
+
                     this.playerCar.damage(randomDamage);
-                    projectile.isActive = false;
                     console.log("Projektil trifft lokales Auto, Schaden:", randomDamage);
-                    return;
+                    return; // Früher Rücksprung nach Kollision
                 }
             }
+
+            // Wenn das Projektil nicht mehr aktiv ist, überspringe den Rest
+            if (!projectile.isActive) return;
 
             // Prüfe Kollision mit Remote-Fahrzeugen
             this.remoteVehicles.forEach((remoteCar, playerId) => {
@@ -706,14 +781,18 @@ export class GameManager {
                 const remoteCarBox = new THREE.Box3().setFromObject(remoteCar.mesh);
 
                 if (remoteCarBox.intersectsBox(projectileBox)) {
+                    // Markiere Projektil als getroffen
+                    this.hitProjectiles.add(projectile.id);
                     processedProjectiles.add(projectile.id);
-                    projectile.isActive = false;
+
+                    // Entferne Projektil sicher
+                    this.safeRemoveProjectile(projectile);
 
                     // Schaden am Fahrzeug senden
                     this.sendVehicleDamageEvent(playerId, randomDamage);
 
                     console.log(`Remote-Fahrzeug ${playerId} wurde getroffen! Schaden: ${randomDamage}`);
-                    return;
+                    return; // Früher Rücksprung nach Kollision
                 }
             });
         });
