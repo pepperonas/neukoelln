@@ -56,6 +56,8 @@ export class GameManager {
         // Kollisionsdelay für einfachere Steuerung
         this.collisionDelay = 0;
 
+        this.damageIndicatorCooldown = false;
+
         // Set up the update method
         this.engine.update = (deltaTime) => this.update(deltaTime);
     }
@@ -227,6 +229,12 @@ export class GameManager {
     }
 
     showDamageIndicator(damage) {
+        // Prüfen, ob eine Anzeige bereits in Bearbeitung ist
+        if (this.damageIndicatorCooldown) return;
+
+        // Cooldown aktivieren
+        this.damageIndicatorCooldown = true;
+
         // Erstelle ein fliegendes Schadenslabel
         const damageIndicator = document.createElement('div');
         damageIndicator.textContent = `-${damage}`;
@@ -262,6 +270,9 @@ export class GameManager {
                 if (damageIndicator.parentNode) {
                     damageIndicator.parentNode.removeChild(damageIndicator);
                 }
+
+                // Cooldown zurücksetzen
+                this.damageIndicatorCooldown = false;
             }
         }, 50);
 
