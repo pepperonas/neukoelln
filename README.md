@@ -48,8 +48,8 @@ sudo systemctl restart nginx
 ```
 
 ```sh
-cd /var/www/html/
-npm start -- --host 0.0.0.0 --port 8080
+ca /var/www/html/gta 
+npm start -- --host 0.0.0.0 --port 8001
 ```
 
 ### Multiplayer Server starten
